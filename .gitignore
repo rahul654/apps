@@ -1,0 +1,10 @@
+node_modules/
+dist/
+_site/
+*.tsbuildinfo
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+*.log
+logs/
+.playwright-mcp/

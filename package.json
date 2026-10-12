@@ -1,0 +1,10 @@
+{
+  "name": "apps",
+  "private": true,
+  "description": "Monorepo of small web apps published to GitHub Pages under /apps/",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-site.mjs",
+    "preview": "node scripts/preview.mjs"
+  }
+}
