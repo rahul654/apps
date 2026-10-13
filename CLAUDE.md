@@ -67,6 +67,12 @@ PDF, image and QR tools; all processing happens in the browser. `src/tools/regis
     - `lib/text/layout.ts` is the single layout engine used for both on-screen display and the PDF writer, so line breaks match. Change it only with its tests.
     - Save strategy per box (`lib/text/strategy.ts`): WinAnsi in Helvetica/Times/Courier → standard fonts. Other scripts the bundled Noto fonts cover (Cyrillic, Greek, Vietnamese…) → embedded font, real text. Complex scripts (Indic, Arabic/Hebrew, Thai, CJK) and emoji → the whole box is rasterised to a 300-dpi image with a "not selectable" badge. Saving is never blocked.
     - Fonts: OFL families in `src/assets/fonts/<family>/` with their `OFL.txt`, registered in `lib/fonts/registry.ts` and loaded on demand. Noto and Caveat must be embedded in full: pdf-lib's subsetter drops their glyphs, and a test guards this.
+- **OCR** (`lib/ocr/`, `tools/ocr/`, `tools/pdf/PdfOcrTool.tsx`): tesseract.js 7 in a small worker pool.
+  - The worker, WASM cores and the English/Hindi `tessdata_fast` files are self-hosted under `dist/ocr/`; never point tesseract.js at a CDN for code.
+  - Other languages and "Best" models download on demand from jsDelivr and are cached in IndexedDB.
+  - Searchable PDFs get an invisible text layer (render mode 3) on the original page, using Tesseract's tiny "GlyphLessFont" with a Unicode mapping, so copy and search work for any script without downloading fonts.
+  - Each word's angle, size and horizontal scale must be derived by mapping the box points through the same pixel→PDF transform as its position, including any OCR-time rotation. Taking the angle from `/Rotate` alone breaks pages whose content is upright but displayed sideways.
+  - tesseract.js 7 can't take language data passed straight to `createWorker`; write it into its IndexedDB cache first.
 - Image encoding runs in an OffscreenCanvas worker pool with a main-thread fallback. Output formats are feature-detected (`canvas.toBlob`), and EXIF orientation is applied before metadata is stripped.
 - `DropZone` keeps its hidden `<input type=file>` *outside* the clickable zone. A programmatic `click()` inside it would bubble back to the zone's `onClick`.
 

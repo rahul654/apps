@@ -402,3 +402,25 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width
 .font-list li.selected .font-name { color: var(--accent); font-weight: 600; }
 .font-list .tag { font: 600 10px/1.4 system-ui, sans-serif; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
 .font-list .tag.muted { background: var(--bg); color: var(--muted); }
+
+/* ---------- OCR ---------- */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 0.86rem; }
+.chip-x { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 4px; border-radius: 999px; }
+.chip-x:hover { background: rgba(37, 99, 235, 0.15); }
+.lang-list-card { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.lang-list { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; }
+.lang-list .check { width: 100%; padding: 2px 4px; border-radius: 6px; }
+.lang-list .check:hover { background: var(--hover); }
+.tag { font: 600 10px/1.4 system-ui, sans-serif; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.tag.ok { background: var(--ok-soft); color: var(--ok); }
+.tag.muted { background: var(--bg); color: var(--muted); }
+.ocr-preview { position: relative; line-height: 0; background: var(--canvas-bg); border-radius: 8px; overflow: hidden; }
+.ocr-img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; border-radius: 8px; }
+.ocr-preview .ocr-img { max-height: none; }
+.ocr-boxes { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ocr-boxes rect { fill: rgba(37, 99, 235, 0.08); stroke: rgba(37, 99, 235, 0.75); stroke-width: 1.5; vector-effect: non-scaling-stroke; cursor: pointer; }
+.ocr-boxes rect.low { fill: rgba(245, 158, 11, 0.25); stroke: #f59e0b; }
+.ocr-boxes rect.hot { fill: rgba(37, 99, 235, 0.3); stroke-width: 2.5; }
+.ocr-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; line-height: 1.4; min-height: 220px; white-space: pre-wrap; }
+.ocr-pages { max-height: 60vh; overflow: auto; }
+.ocr-pages .thumb { font-weight: 700; font-size: 0.9rem; color: var(--muted); }

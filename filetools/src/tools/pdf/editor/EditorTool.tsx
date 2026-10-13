@@ -10,6 +10,7 @@ import type { TextSaveDeps } from '../../../lib/text/boxWriter';
 import { plainText, type Paragraph } from '../../../lib/text/model';
 import { domCanvasEnv, rasterizeTextBox } from '../../../lib/text/rasterize';
 import { TextBoxPanel, TextToolPanel } from './TextBoxPanel';
+import { ocrLicenceLinks } from '../../../components/Licences';
 import { useTextEngine } from './textEngine';
 import { applyEdits, listFormFields, replacePagesWithImages } from '../../../lib/pdf/editorSave';
 import type { EmbeddableImage } from '../../../lib/pdf/ops';
@@ -690,9 +691,11 @@ export default function EditorTool() {
           )}
           <p className="tiny muted">{objects.length} object{objects.length === 1 ? '' : 's'} added in total.</p>
           <details className="tiny muted">
-            <summary>Font licences</summary>
+            <summary>Licences</summary>
             <p>Bundled fonts are licensed under the SIL Open Font License 1.1:</p>
             <ul>{licenceLinks().map((l) => <li key={l.label}><a href={l.url} target="_blank" rel="noopener noreferrer">{l.label}</a></li>)}</ul>
+            <p>OCR tools (Image to text, Make PDF searchable):</p>
+            <ul>{ocrLicenceLinks().map((l) => <li key={l.label}><a href={l.url} target="_blank" rel="noopener noreferrer">{l.label}</a> — {l.licence}</li>)}</ul>
           </details>
         </aside>
       </div>

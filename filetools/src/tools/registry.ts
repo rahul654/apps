@@ -27,6 +27,16 @@ export const TOOLS: ToolDef[] = [
     component: lazy(() => import('./image/ImageTool')),
   },
   {
+    id: 'ocr',
+    path: '/ocr',
+    title: 'Image to text (OCR)',
+    description: 'Recognise text in photos, scans and screenshots — English, Hindi and 20 more languages.',
+    emoji: '🔍',
+    group: 'Images',
+    badge: 'New',
+    component: lazy(() => import('./ocr/OcrTool')),
+  },
+  {
     id: 'pdf-edit',
     path: '/pdf/edit',
     title: 'Edit PDF',
@@ -63,6 +73,16 @@ export const TOOLS: ToolDef[] = [
     emoji: '🔁',
     group: 'PDF',
     component: lazy(() => import('./pdf/ImagesPdfTool')),
+  },
+  {
+    id: 'pdf-ocr',
+    path: '/pdf/ocr',
+    title: 'Make PDF searchable (OCR)',
+    description: 'Add an invisible, selectable text layer to scanned PDFs — pages stay exactly as they are.',
+    emoji: '🔎',
+    group: 'PDF',
+    badge: 'New',
+    component: lazy(() => import('./pdf/PdfOcrTool')),
   },
   {
     id: 'pdf-stamp',
