@@ -20,7 +20,8 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── README.md                  ← how to run + host on GitHub Pages
 ├── splitwise/                 ← expense splitting (Vite + React 19 + TypeScript)
 ├── devtools/                  ← developer utilities, one route per tool
-└── filetools/                 ← PDF / image / QR tools, all client-side
+├── filetools/                 ← PDF / image / QR tools, all client-side
+└── recorder/                  ← screen + webcam recorder, recordings kept in IndexedDB
 ```
 
 `_site/`, `dist/` and `node_modules/` are build output and are git-ignored.
@@ -43,7 +44,7 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |
 | `splitwise/` | `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
-| `devtools/`, `filetools/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
+| `devtools/`, `filetools/`, `recorder/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
 
 ## Dev Tools (`devtools/`)
 
@@ -68,6 +69,19 @@ PDF, image and QR tools; all processing happens in the browser. `src/tools/regis
     - Fonts: OFL families in `src/assets/fonts/<family>/` with their `OFL.txt`, registered in `lib/fonts/registry.ts` and loaded on demand. Noto and Caveat must be embedded in full: pdf-lib's subsetter drops their glyphs, and a test guards this.
 - Image encoding runs in an OffscreenCanvas worker pool with a main-thread fallback. Output formats are feature-detected (`canvas.toBlob`), and EXIF orientation is applied before metadata is stripped.
 - `DropZone` keeps its hidden `<input type=file>` *outside* the clickable zone. A programmatic `click()` inside it would bubble back to the zone's `onClick`.
+
+## Recorder (`recorder/`)
+
+Loom-style screen + webcam recorder. Recordings live in IndexedDB; nothing is uploaded.
+
+- **Compositing** (`src/media/compositor.ts`, `src/workers/compositor.worker.ts`): screen + camera bubble are drawn into one canvas stream. Fallback chain: `worker-breakout` (Chromium stream processors + OffscreenCanvas in a worker), then `worker-spec`, then `main-canvas` redrawn from a worker timer. Force one with `&compositor=main-canvas`.
+  - Never drive drawing from main-thread `requestAnimationFrame`: hidden tabs throttle it to ~1 Hz, which freezes the bubble.
+  - To test the hidden-tab behaviour, use a Chromium launched *without* Playwright's `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows` and `--disable-renderer-backgrounding` flags. With them, hidden tabs are never throttled and the test proves nothing.
+- **Test mode:** `?fake=1` replaces screen, camera and mic with generated streams (clock + frame counter + tone). Use it for any automated check of the pipeline.
+- **Crash safety:** MediaRecorder runs with a 1 s timeslice, and chunks go straight to IndexedDB (`lib/recordingStore.ts`). On load, unfinished sessions are offered for recovery, skipping ones another tab still holds a Web Lock on.
+- **WebM duration:** `lib/webmDuration.ts` patches the duration into the EBML header after recording; without it, players can't seek.
+- **Trim/convert:** `mediabunny` (MPL-2.0: fine to use unmodified; edits to its own files must be published), lazy-loaded in the `editor` chunk. Fast trim copies packets and starts at the previous key frame (Chromium is asked for one every 2 s); frame-accurate trim re-encodes. Don't use ffmpeg.wasm: GitHub Pages can't send the COOP/COEP headers its threaded build needs.
+- **Formats:** chosen by `lib/mime.ts` from `MediaRecorder.isTypeSupported`: MP4 H.264/AAC where available (Chrome on Windows/macOS, Safari), else WebM VP9/Opus. MP4 conversion on Linux Chrome falls back to Opus audio, which QuickTime can't play.
 
 ## Splitwise app (`splitwise/`)
 
