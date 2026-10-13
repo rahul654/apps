@@ -6,6 +6,8 @@ A single git repo holding several small web apps, published together on GitHub P
 | --- | --- | --- |
 | https://rahul654.github.io/apps/ | Landing page listing the apps | [index.html](index.html) |
 | https://rahul654.github.io/apps/splitwise/ | Splitwise clone (React + TypeScript, data in localStorage) | [splitwise/](splitwise/) |
+| https://rahul654.github.io/apps/devtools/ | Developer utilities: JSON, Base64, URL, JWT, timestamp, regex, cron, UUID, hash, diff, converters | [devtools/](devtools/) |
+| https://rahul654.github.io/apps/filetools/ | PDF editor and organiser, image compressor/converter, QR generator/scanner, all processed in the browser | [filetools/](filetools/) |
 
 > GitHub Pages serves a repo named `apps` at `https://<user>.github.io/apps/`, so the repo name *is* the `/apps` part of the URL.
 > The bare root `https://rahul654.github.io/` is served by a different repo named `rahul654.github.io`. If you want a page there, create that repo separately.

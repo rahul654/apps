@@ -18,7 +18,9 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 │   └── preview.mjs            ← serves _site/ under /apps/ to mirror Pages locally
 ├── .github/workflows/deploy.yml  ← on push to main: build-site → deploy to Pages
 ├── README.md                  ← how to run + host on GitHub Pages
-└── splitwise/                 ← app #1 (Vite + React 19 + TypeScript)
+├── splitwise/                 ← expense splitting (Vite + React 19 + TypeScript)
+├── devtools/                  ← developer utilities, one route per tool
+└── filetools/                 ← PDF / image / QR tools, all client-side
 ```
 
 `_site/`, `dist/` and `node_modules/` are build output and are git-ignored.
@@ -41,6 +43,31 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |
 | `splitwise/` | `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
+| `devtools/`, `filetools/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
+
+## Dev Tools (`devtools/`)
+
+Developer utilities, one route per tool (`#/json`, `#/regex`, `#/converters/color`, …). `src/tools/registry.ts` is the single list driving the sidebar, home grid and routes; every tool is `React.lazy`.
+
+- **Privacy rule:** tool *inputs* are never written to localStorage (people paste tokens and secrets). They live in memory only (`hooks/memoryState.ts`). Only preferences are persisted, under `devtools:prefs:v1`.
+- Heavy work (JSON parse/diff, regex, hashing, text diff) runs in one module worker (`src/workers/`). `ComputeClient` is "latest wins": a new request on a busy worker terminates it and starts a fresh one. That is what keeps a catastrophic regex from blocking the next one. The regex tool also has a 1.5 s timeout.
+- MD5, cron parser/next-run, Myers diff, UUID v7 and colour maths are self-written in `src/lib/` and tested against published vectors. No runtime deps beyond React/router.
+
+## File Tools (`filetools/`)
+
+PDF, image and QR tools; all processing happens in the browser. `src/tools/registry.ts` drives home + routes; every tool is `React.lazy` so the home page doesn't load pdf.js/pdf-lib.
+
+- **Libraries:** `pdf-lib` writes PDFs, `pdfjs-dist` 4.x (legacy build) renders them, `fflate` zips, `qrcode` generates, `jsqr` is the scanner fallback when `BarcodeDetector` is missing.
+- **pdf.js worker** is emitted as `assets/pdf.worker.min-*.mjs`. Hosts must serve `.mjs` as JavaScript or PDFs won't open (GitHub Pages does; `scripts/preview.mjs` maps it too). A Vite plugin copies pdf.js CMaps/standard fonts to `dist/pdfjs/`.
+- **PDF editor (`tools/pdf/editor/`, `lib/pdf/editorSave.ts`):** objects are stored in PDF user-space points. Screen ⇄ PDF mapping lives in `lib/coords.ts` and is tested against pdf.js's own viewport for rotations 0/90/180/270; change it only with those tests.
+  - "Cover"/"White-out" only paint over content, and the UI says so.
+  - "Redact" is real: affected pages are re-rendered to 200-dpi images with the box burned in, and the original content streams are dropped. This flattens forms on those pages.
+  - **Rich text boxes** (`lib/text/`, `tools/pdf/editor/richtext/`): ProseMirror editor, model = box → paragraphs → styled runs (font, size, B/I/U/S, colour, highlight; paragraph align + line height).
+    - `lib/text/layout.ts` is the single layout engine used for both on-screen display and the PDF writer, so line breaks match. Change it only with its tests.
+    - Save strategy per box (`lib/text/strategy.ts`): WinAnsi in Helvetica/Times/Courier → standard fonts. Other scripts the bundled Noto fonts cover (Cyrillic, Greek, Vietnamese…) → embedded font, real text. Complex scripts (Indic, Arabic/Hebrew, Thai, CJK) and emoji → the whole box is rasterised to a 300-dpi image with a "not selectable" badge. Saving is never blocked.
+    - Fonts: OFL families in `src/assets/fonts/<family>/` with their `OFL.txt`, registered in `lib/fonts/registry.ts` and loaded on demand. Noto and Caveat must be embedded in full: pdf-lib's subsetter drops their glyphs, and a test guards this.
+- Image encoding runs in an OffscreenCanvas worker pool with a main-thread fallback. Output formats are feature-detected (`canvas.toBlob`), and EXIF orientation is applied before metadata is stripped.
+- `DropZone` keeps its hidden `<input type=file>` *outside* the clickable zone. A programmatic `click()` inside it would bubble back to the zone's `onClick`.
 
 ## Splitwise app (`splitwise/`)
 

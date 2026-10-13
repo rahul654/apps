@@ -8,9 +8,12 @@ import { extname, join, normalize, resolve } from 'node:path';
 const site = resolve(import.meta.dirname, '..', '_site');
 const BASE = '/apps/';
 const PORT = Number(process.env.PORT) || 4173;
+// Keep in step with what GitHub Pages sends: module workers (.mjs) are rejected unless served as JavaScript.
 const TYPES = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
-  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
+  '.avif': 'image/avif', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.pdf': 'application/pdf',
 };
 
 if (!existsSync(site)) {
