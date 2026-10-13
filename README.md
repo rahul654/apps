@@ -9,6 +9,7 @@ A single git repo holding several small web apps, published together on GitHub P
 | https://rahul654.github.io/apps/devtools/ | Developer utilities: JSON, Base64, URL, JWT, timestamp, regex, cron, UUID, hash, diff, converters | [devtools/](devtools/) |
 | https://rahul654.github.io/apps/filetools/ | PDF editor and organiser, OCR (image to text, searchable PDFs), image compressor/converter, QR generator/scanner, all processed in the browser | [filetools/](filetools/) |
 | https://rahul654.github.io/apps/recorder/ | Loom-style screen and webcam recorder with a local library, trim and MP4/WebM export | [recorder/](recorder/) |
+| https://rahul654.github.io/apps/sandbox/ | Open websites in sandboxed iframes (isolation presets, fresh session, device sizes) plus an HTML/JS playground with a console | [sandbox/](sandbox/) |
 
 > GitHub Pages serves a repo named `apps` at `https://<user>.github.io/apps/`, so the repo name *is* the `/apps` part of the URL.
 > The bare root `https://rahul654.github.io/` is served by a different repo named `rahul654.github.io`. If you want a page there, create that repo separately.

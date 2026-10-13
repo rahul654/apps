@@ -21,7 +21,8 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── splitwise/                 ← expense splitting (Vite + React 19 + TypeScript)
 ├── devtools/                  ← developer utilities, one route per tool
 ├── filetools/                 ← PDF / image / QR tools, all client-side
-└── recorder/                  ← screen + webcam recorder, recordings kept in IndexedDB
+├── recorder/                  ← screen + webcam recorder, recordings kept in IndexedDB
+└── sandbox/                   ← open websites in sandboxed iframes + HTML playground
 ```
 
 `_site/`, `dist/` and `node_modules/` are build output and are git-ignored.
@@ -44,7 +45,7 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |
 | `splitwise/` | `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
-| `devtools/`, `filetools/`, `recorder/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
+| `devtools/`, `filetools/`, `recorder/`, `sandbox/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
 
 ## Dev Tools (`devtools/`)
 
@@ -88,6 +89,16 @@ Loom-style screen + webcam recorder. Recordings live in IndexedDB; nothing is up
 - **WebM duration:** `lib/webmDuration.ts` patches the duration into the EBML header after recording; without it, players can't seek.
 - **Trim/convert:** `mediabunny` (MPL-2.0: fine to use unmodified; edits to its own files must be published), lazy-loaded in the `editor` chunk. Fast trim copies packets and starts at the previous key frame (Chromium is asked for one every 2 s); frame-accurate trim re-encodes. Don't use ffmpeg.wasm: GitHub Pages can't send the COOP/COEP headers its threaded build needs.
 - **Formats:** chosen by `lib/mime.ts` from `MediaRecorder.isTypeSupported`: MP4 H.264/AAC where available (Chrome on Windows/macOS, Safari), else WebM VP9/Opus. MP4 conversion on Linux Chrome falls back to Opus audio, which QuickTime can't play.
+
+## Sandbox (`sandbox/`)
+
+Opens websites in sandboxed iframes; each sandbox is a tab. Also an HTML/JS playground (`srcdoc`) with a console. State is in `sandbox:data:v1` (`lib/storage.ts`), via `store/SandboxStore.tsx`.
+
+- **Static site, so no proxy.** Sites sending `X-Frame-Options`/`frame-ancestors` (Google, GitHub, banks…) can't be framed, and the browser hides that from us. `lib/embed.ts` warns for a known list and turns YouTube/Vimeo links into their embed players. Don't claim to "unblock" sites.
+- **Isolation rules (`lib/policy.ts`):** `allow-top-navigation` is never offered. `effectiveTokens` drops `allow-same-origin` for HTML sandboxes (srcdoc inherits our origin and could remove its own sandbox) and for URLs on this app's origin when scripts run. Keep those tests passing.
+- **Frames are created imperatively (`components/SandboxFrame.tsx`):** sandbox/allow/`credentialless` must be set before insertion, and React drops `credentialless`. Any policy change remounts the frame via `key`.
+- Frames stay mounted while their tab is hidden (`App.tsx`), so switching tabs doesn't reload pages. Element ids inside a sandbox must be unique per sandbox (`useId`).
+- **Console bridge (`lib/consoleBridge.ts`):** `bridgeMain` is stringified into the srcdoc, so it must stay self-contained (no imports/outer vars). Messages are accepted only from that frame's window with the current run's channel id. Error lines are shifted back by the injected lines.
 
 ## Splitwise app (`splitwise/`)
 
