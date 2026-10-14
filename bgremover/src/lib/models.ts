@@ -38,6 +38,8 @@ export interface ModelSpec {
   output: OutputKind;
   /** The WASM build of ONNX Runtime is 32-bit (4 GB heap); this model runs out of memory there. */
   webgpuOnly: boolean;
+  /** Not confirmed end-to-end on real hardware yet; shown with an "Experimental" badge. */
+  experimental?: boolean;
 }
 
 const IMAGENET_MEAN: [number, number, number] = [0.485, 0.456, 0.406];
@@ -94,6 +96,7 @@ export const MODELS: readonly ModelSpec[] = [
     std: IMAGENET_STD,
     output: 'logits',
     webgpuOnly: true,
+    experimental: true,
   },
 ];
 

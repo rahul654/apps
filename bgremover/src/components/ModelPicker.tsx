@@ -42,6 +42,7 @@ export function ModelPicker({ compact = false }: { compact?: boolean }) {
                   ) : (
                     <span className="badge">{formatBytes(size)} download</span>
                   )}{' '}
+                  {m.experimental && <span className="badge warn">Experimental</span>}{' '}
                   <span className="muted">
                     {m.licence}
                     {p && p.backend === 'webgpu' ? ' · WebGPU' : ''}

@@ -72,7 +72,7 @@ function* fields(buf: Uint8Array, start = 0, end = buf.length): Generator<Field>
 const utf8 = new TextDecoder();
 const enc = new TextEncoder();
 
-class Writer {
+export class ProtoWriter {
   private chunks: Uint8Array[] = [];
   length = 0;
   raw(b: Uint8Array) {
@@ -151,7 +151,7 @@ export function decodeNode(buf: Uint8Array): OnnxNode {
 }
 
 export function encodeNode(n: OnnxNode): Uint8Array {
-  const w = new Writer();
+  const w = new ProtoWriter();
   for (const i of n.inputs) w.string(1, i);
   for (const o of n.outputs) w.string(2, o);
   if (n.name) w.string(3, n.name);
@@ -161,16 +161,16 @@ export function encodeNode(n: OnnxNode): Uint8Array {
   return w.finish();
 }
 
-export const intAttr = (name: string, v: number) => new Writer().string(1, name).int(3, v).int(20, 2).finish();
+export const intAttr = (name: string, v: number) => new ProtoWriter().string(1, name).int(3, v).int(20, 2).finish();
 
 export function int64Tensor(values: number[]): Uint8Array {
   const raw = new Uint8Array(values.length * 8);
   const dv = new DataView(raw.buffer);
   values.forEach((v, i) => dv.setBigInt64(i * 8, BigInt(v), true));
-  return new Writer().int(1, values.length).int(2, 7).bytes(9, raw).finish();
+  return new ProtoWriter().int(1, values.length).int(2, 7).bytes(9, raw).finish();
 }
 
-export const tensorAttr = (name: string, tensor: Uint8Array) => new Writer().string(1, name).bytes(5, tensor).int(20, 4).finish();
+export const tensorAttr = (name: string, tensor: Uint8Array) => new ProtoWriter().string(1, name).bytes(5, tensor).int(20, 4).finish();
 
 /** Integer value of an INT attribute, or undefined. */
 export function readIntAttr(attr: Uint8Array | undefined): number | undefined {
@@ -245,7 +245,7 @@ export function narrowWideNodes(model: Uint8Array, maxFan = 6): { model: Uint8Ar
 
   let seq = 0;
   const uid = (base: string) => `${base}__narrow${++seq}`;
-  const out = new Writer();
+  const out = new ProtoWriter();
   const emit = (n: OnnxNode) => out.bytes(1, encodeNode(n));
 
   const concatTree = (n: OnnxNode) => {
@@ -311,10 +311,20 @@ export function narrowWideNodes(model: Uint8Array, maxFan = 6): { model: Uint8Ar
   }
 
   const newGraph = out.finish();
-  const result = new Writer();
+  const result = new ProtoWriter();
   for (const f of fields(model)) {
     if (f.no === 7 && f.start === graph.start) result.bytes(7, newGraph);
     else result.raw(model.subarray(f.start, f.end));
   }
   return { model: result.finish(), stats };
+}
+
+/** All nodes of a model's main graph, decoded (for tests and diagnostics). */
+export function graphNodes(model: Uint8Array): OnnxNode[] {
+  const out: OnnxNode[] = [];
+  for (const f of fields(model)) {
+    if (f.no !== 7 || f.wire !== 2) continue;
+    for (const g of fields(model, f.valStart, f.valEnd)) if (g.no === 1) out.push(decodeNode(model.subarray(g.valStart, g.valEnd)));
+  }
+  return out;
 }

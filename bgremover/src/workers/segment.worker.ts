@@ -6,6 +6,7 @@
  */
 import type { InferenceSession } from 'onnxruntime-web';
 import { fetchModel } from '../lib/modelCache';
+import { narrowWideNodes } from '../lib/onnxRewrite';
 import { getModel, modelUrl, type Backend, type ModelId, type Precision } from '../lib/models';
 import { outputToMask, planInput, resizeMask, rgbaToTensor } from '../lib/preprocess';
 import type { OrtBuild, WorkerRequest, WorkerResponse } from './protocol';
@@ -45,6 +46,8 @@ async function load(model: ModelId, backend: Backend, precision: Precision): Pro
   const file = precision === 'fp16' && spec.files.fp16 ? spec.files.fp16 : spec.files.fp32;
   const bytes = await fetchModel(modelUrl(spec, file), file, (loaded, total) => post({ type: 'progress', phase: 'download', model, loaded, total }));
   post({ type: 'progress', phase: 'init', model, loaded: 0, total: 1 });
+  // WebGPU shaders can bind only ~8–10 buffers; split very wide Concat/Split nodes first (exact, see onnxRewrite.ts).
+  const narrowed = backend === 'webgpu' ? narrowWideNodes(bytes).model : bytes;
   if (current) {
     await current.session.release().catch(() => {});
     current = null;
@@ -53,7 +56,7 @@ async function load(model: ModelId, backend: Backend, precision: Precision): Pro
   let used = backend;
   let fellBack = false;
   try {
-    session = await createSession(bytes, backend);
+    session = await createSession(narrowed, backend);
   } catch (e) {
     if (backend !== 'webgpu' || spec.webgpuOnly) throw e;
     // Some GPUs/drivers can't run every op; the CPU path always works for the small models.
@@ -152,5 +155,6 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
 function friendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/bad_alloc|out of memory|OOM|Aborted\(\)/i.test(msg)) return 'Ran out of memory running the model. Try a smaller image or the Fast model.';
+  if (current?.backend === 'webgpu') return `The model failed on this GPU (${msg.slice(0, 160)}). Try the Fast or People model.`;
   return msg || 'Something went wrong';
 }

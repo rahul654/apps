@@ -30,7 +30,7 @@ export function AboutPage() {
               <strong>Everything runs on your device.</strong> Images are decoded, segmented and exported in this browser tab. Nothing is uploaded and there is no server.
             </li>
             <li>
-              <strong>The first run downloads a model</strong> from Hugging Face (between 4.6 MB and 224 MB, shown before it starts). It is kept in this browser’s storage, so later visits work offline.
+              <strong>The first run downloads a model</strong> from Hugging Face (between {formatBytes(Math.min(...MODELS.map((m) => m.files.fp32.bytes)))} and {formatBytes(Math.max(...MODELS.map((m) => m.files.fp32.bytes)))}, shown before it starts). It is kept in this browser’s storage, so later visits work offline.
             </li>
             <li>
               <strong>Your images aren’t stored.</strong> They stay in memory until you remove them or close the tab. Only settings (model, background, export format) are remembered.

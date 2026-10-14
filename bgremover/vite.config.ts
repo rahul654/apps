@@ -8,14 +8,13 @@ import react from '@vitejs/plugin-react';
 
 // ONNX Runtime Web loads its WebAssembly glue (.mjs) and binary (.wasm) by URL at runtime.
 // Self-host them under dist/ort-<version>/ (never a CDN) and point `env.wasm.wasmPaths` there.
-// Two builds are shipped: the plain CPU one (~14 MB) and the JSEP WebGPU one (~28 MB, also runs CPU);
-// the app downloads only the one it needs. The newer native WebGPU build (ort.webgpu.*, "asyncify")
-// fails on BiRefNet: its 1025-input Concat / 33-output Split need more storage buffers per shader
-// than adapters allow ("Too many storage buffers in shader. Current: 11, Max is 10").
+// Two builds are shipped: the plain CPU one (~14 MB) and the WebGPU one (~27 MB, "asyncify", also
+// runs CPU); the app downloads only the one it needs. BiRefNet only runs on WebGPU after
+// src/lib/onnxRewrite.ts narrows its 1024-input Concat / 32-output Splits (see there).
 const ORT_PKG = fileURLToPath(new URL('./node_modules/onnxruntime-web', import.meta.url));
 const ORT_VERSION = JSON.parse(readFileSync(join(ORT_PKG, 'package.json'), 'utf8')).version as string;
 const ORT_DIR = `ort-${ORT_VERSION}`;
-const ORT_FILES = ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
+const ORT_FILES = ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm'];
 
 // The npm package declares MIT but ships no LICENSE file, so write the notice out here.
 const ORT_LICENSE = `ONNX Runtime Web ${ORT_VERSION} (https://github.com/microsoft/onnxruntime)
@@ -95,10 +94,9 @@ export default defineConfig({
   resolve: {
     // Use the builds that fetch their wasm glue from `wasmPaths` instead of the "bundle" builds,
     // which make Vite emit a second, hashed copy of the 14–28 MB .wasm files.
-    // "onnxruntime-web/webgpu" is pointed at the JSEP build (ort.min.mjs); see ORT_FILES above.
     alias: [
       { find: /^onnxruntime-web\/wasm$/, replacement: join(ORT_PKG, 'dist/ort.wasm.min.mjs') },
-      { find: /^onnxruntime-web\/webgpu$/, replacement: join(ORT_PKG, 'dist/ort.min.mjs') },
+      { find: /^onnxruntime-web\/webgpu$/, replacement: join(ORT_PKG, 'dist/ort.webgpu.min.mjs') },
     ],
   },
   optimizeDeps: { exclude: ['onnxruntime-web'] },

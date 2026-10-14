@@ -22,7 +22,10 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── devtools/                  ← developer utilities, one route per tool
 ├── filetools/                 ← PDF / image / QR tools, all client-side
 ├── recorder/                  ← screen + webcam recorder, recordings kept in IndexedDB
-└── sandbox/                   ← open websites in sandboxed iframes + HTML playground
+├── sandbox/                   ← open websites in sandboxed iframes + HTML playground
+├── bgremover/                 ← background remover, ONNX models in a worker
+├── transcribe/                ← speech to text, Whisper in a worker
+└── whiteboard/                ← Excalidraw whiteboard + diagrams, boards in IndexedDB
 ```
 
 `_site/`, `dist/` and `node_modules/` are build output and are git-ignored.
@@ -45,7 +48,7 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |
 | `splitwise/` | `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
-| `devtools/`, `filetools/`, `recorder/`, `sandbox/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
+| `devtools/`, `filetools/`, `recorder/`, `sandbox/`, `bgremover/`, `transcribe/`, `whiteboard/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
 
 ## Dev Tools (`devtools/`)
 
@@ -99,6 +102,48 @@ Opens websites in sandboxed iframes; each sandbox is a tab. Also an HTML/JS play
 - **Frames are created imperatively (`components/SandboxFrame.tsx`):** sandbox/allow/`credentialless` must be set before insertion, and React drops `credentialless`. Any policy change remounts the frame via `key`.
 - Frames stay mounted while their tab is hidden (`App.tsx`), so switching tabs doesn't reload pages. Element ids inside a sandbox must be unique per sandbox (`useId`).
 - **Console bridge (`lib/consoleBridge.ts`):** `bridgeMain` is stringified into the srcdoc, so it must stay self-contained (no imports/outer vars). Messages are accepted only from that frame's window with the current run's channel id. Error lines are shifted back by the injected lines.
+
+## Background Remover (`bgremover/`)
+
+Removes image backgrounds on-device with ONNX Runtime Web (`onnxruntime-web` 1.30) in a module worker (`src/workers/segment.worker.ts`); `lib/engine.ts` is the main-thread client. Images are never uploaded; only prefs persist (`bgremover:prefs:v1`, `bgremover:theme`).
+
+- **Models (`lib/models.ts`):** Fast = U²-Net-p (Apache-2.0, 4.4 MB), People = MODNet (Apache-2.0, 24.7 MB), Best quality = BiRefNet lite (MIT, 109 MB fp16 / 214 MB fp32, WebGPU-only, marked experimental and not yet confirmed on real GPU hardware). Weights download on demand from Hugging Face, pinned to a commit and checked against size + SHA-256 before use. Avoid `briaai/RMBG-*` (non-commercial) and `@imgly/background-removal` (AGPL). `planRun` picks backend/precision: fp16 only with `shader-f16`; small models stay on WASM when the only WebGPU adapter is a software fallback.
+- **ORT self-hosting:** a Vite plugin copies the `.mjs` glue + `.wasm` into `dist/ort-<version>/` and the worker sets `env.wasm.wasmPaths` to it (from `document.baseURI`). `onnxruntime-web/wasm` and `/webgpu` are aliased to the non-"bundle" builds; the bundle builds make Vite emit a second hashed copy of the 14–27 MB wasm. Never load ORT code from a CDN.
+- **Single-threaded:** GitHub Pages can't send COOP/COEP, so `numThreads = 1`. BiRefNet's fixed 1024×1024 input runs out of wasm32's 4 GB on CPU, hence WebGPU-only.
+- **Wide-node rewrite (`lib/onnxRewrite.ts`):** before any WebGPU session the worker splits Concat/Split nodes wider than 6 into trees (BiRefNet has a 1024-input Concat and 32-output Splits that exceed the shader storage-buffer limit). Only the graph's node list is re-encoded; weights are copied byte for byte. Output is identical (tested through ORT in Node). Change it only with those tests.
+- **Model cache:** weights live in Cache Storage `bgremover-models-v1`, keyed by the pinned HF URL (written by `lib/modelCache.ts` in the worker). The UI shows the size and asks before the first download of each model.
+- **Service worker** (`src/sw-template.js`, emitted as `dist/sw.js` with a per-build precache list; registered in production only, so its scope is the app folder): navigations are network-first with cache fallback, hashed assets cache-first, `ort-<version>/` cached on first use. Lookups use `ignoreVary: true`, because hosts send `Vary: Origin` and module-script requests carry an Origin header the precache requests didn't (without it, offline loads fail).
+- **Mask model (`lib/mask.ts`):** raw model mask → refine lookup table (threshold/softness) → signed brush layer (`Int8Array`, −127 erase … +127 restore). Original pixels are never modified. Strokes record dirty-rect patches for undo (`lib/history.ts`, byte-budgeted). Export (`lib/render.ts`) recomposes at original resolution; JPEG gets a white background when the background is transparent.
+- **Testing:** `?webgpu=0` forces the CPU path. WebGPU in headless Chromium needs `--enable-unsafe-webgpu` and an http(s) localhost page (it's unavailable on `data:` URLs), and then it is SwiftShader: slow, no `shader-f16`.
+
+## Speech to Text (`transcribe/`)
+
+Whisper (`Xenova/whisper-tiny|base|small`, Apache-2.0) via transformers.js 3 in a module worker (`src/workers/whisper.worker.ts`). Nothing is uploaded, except in Live dictation (Web Speech API), which the UI labels as sending audio to the browser vendor.
+
+- **ORT WASM is self-hosted** in `dist/ort/<ort-version>/` (vite.config.ts), and the worker sets `env.backends.onnx.wasm.wasmPaths` to it; otherwise transformers.js loads it from jsDelivr. ORT's bundle also has `new URL("ort-wasm-simd-threaded.jsep.wasm", import.meta.url)`, which makes Vite emit a second 21 MB copy. A `transform` plugin hides it, and it must also be in `worker.plugins` because the worker is a separate Rollup build.
+- **Single-threaded WASM** (`numThreads = 1`): Pages can't send COOP/COEP. WebGPU is used when `navigator.gpu.requestAdapter()` succeeds (dtype fp32 encoder + q4 decoder); WASM uses q8 for both. Sizes per backend are in `lib/models.ts`.
+- **Model cache:** a custom Cache Storage `transcribe:models` (`env.useCustomCache`), not transformers' default `transformers-cache`, because the origin is shared with other apps. `media/modelCache.ts` lists and deletes by parsing the Hugging Face URLs used as keys.
+- **Language detection is ours:** transformers.js v3 defaults to English. One decoder step after `<|startoftranscript|>`, argmax over `lang_to_id`.
+- **Long audio** (`lib/merge.ts`): 30 s windows, 5 s stride. Merge by **word alignment**, not time. Whisper's timestamps near a window edge drift by seconds, and merging by time dropped whole sentences. Matched words must be within 10 s of each other (refrains otherwise match the wrong verse). If there's no match, fall back to cutting at the middle of the overlap. The two fixtures in `lib/__fixtures__/` are real per-window output; add one (`?debug=1` logs `transcribe:window` JSON) when changing the merge.
+- **Repetition loops:** word-timestamp mode decodes without timestamp tokens and Tiny loops. A looping window is decoded again at segment level (word times interpolated), then `collapseLoops` removes what's left. Silent windows (RMS < −60 dBFS) are skipped.
+- **Cancel = `worker.terminate()`**; the next run reloads the model from the cache. The current job lives in `store/job.ts` (outside React), so it survives navigation.
+- **Decoding** uses a 16 kHz `OfflineAudioContext` (it resamples); `lib/audio.ts` has a windowed-sinc resampler as fallback. Audio files are stored as-is; video and mic recordings are stored as 16 kHz WAV (MediaRecorder WebM can't seek).
+- **IndexedDB** `transcribe` (`transcripts`, `audio`); records go through `parseTranscript` on read and on JSON import. Prefs are in `transcribe:prefs:v1`.
+- **`onnxruntime-node` and `sharp` are stubbed** via `overrides` → `stubs/` (the browser build never loads them; saves ~560 MB per install).
+- **Testing:** jsdom's Blob survives neither fake-indexeddb nor `.text()`, so the smoke test mocks `getAudio` and reads blobs with FileReader. For the mic, use `--use-fake-device-for-media-stream --use-file-for-fake-audio-capture=<wav>`; `?fake=1` swaps in a tone. Playwright downloads failed in a reused persistent profile but work in a fresh context. A SwiftShader WebGPU adapter (`--enable-unsafe-webgpu --use-webgpu-adapter=swiftshader`) runs the WebGPU path, very slowly.
+
+## Whiteboard (`whiteboard/`)
+
+Excalidraw-based whiteboard (`@excalidraw/excalidraw` 0.18, MIT). `#/` is the boards library; `#/b/:id` lazy-loads `components/BoardEditor.tsx`, so the list never downloads Excalidraw (~1.1 MB).
+
+- **Fonts are self-hosted.** A Vite plugin copies `node_modules/@excalidraw/excalidraw/dist/prod/fonts` to `dist/fonts/` (and serves it in dev). `main.tsx` sets `window.EXCALIDRAW_ASSET_PATH` to the *absolute* URL of the page folder (`lib/assetPath.ts`): Excalidraw resolves a relative path against the origin, not the page, and silently falls back to esm.sh.
+- **Worker chunk:** `vite.config.ts` puts Excalidraw's two small shared modules (`chunk-ZUYEQ4TG`, `chunk-SRAX5OIU`) in an `excalidraw-shared` chunk. Otherwise Rollup lets the font-subsetting worker import the editor chunk and the app entry, which crash in a worker. Those names are Excalidraw build hashes: after upgrading, check that `dist/assets/subset-worker.chunk-*.js` imports only `subset-shared` and `excalidraw-shared`.
+- **No backend:** `aiEnabled={false}` (Text-to-diagram shows only the Mermaid tab), no collab or share-link, and CSS hides the library's "Browse libraries" button (that site returns items via an `#addLibrary=` hash, which would hit our router).
+- **Storage:** IndexedDB `whiteboard` with stores `boards` (summaries), `scenes`, `files` (key `[boardId, id]`, pruned when no image uses them), `thumbs` (PNG data URL + revision) and `kv` (Excalidraw library). Store layout changes go in `db.ts`; record shape changes bump `SCHEMA_VERSION` (`lib/types.ts`) and add `MIGRATIONS[old]` in `lib/schema.ts`. Every record is validated on load; bad ones are hidden and counted, never deleted.
+- **Autosave** (debounced, plus flush on `pagehide`/hidden tab/leaving the board): `lib/sceneSignature.ts` ignores `version`/`versionNonce`/`updated`, so opening a board or a font reflow isn't an edit. Scroll, zoom and tool styles are saved only on flush, with `touch: false`, which doesn't change `updatedAt`. Never save while `appState.isLoading`.
+- **Templates** (`lib/templates.ts`) are built in code by `lib/elements.ts` with fractional indices, bound labels and two-way arrow bindings; `templates.test.ts` checks ids, indices and bindings.
+- **Backup** is one JSON file (`whiteboard-backup`); re-importing skips identical boards and imports conflicting ids as copies.
+- **Browser tests:** Chromium exports through the File System Access API (native save dialog), so delete `window.showSaveFilePicker` in an init script to observe downloads. The jsdom smoke test mocks `components/BoardEditor` (Excalidraw needs a canvas).
 
 ## Splitwise app (`splitwise/`)
 
