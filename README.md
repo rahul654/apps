@@ -13,6 +13,7 @@ A single git repo holding several small web apps, published together on GitHub P
 | https://rahul654.github.io/apps/bgremover/ | Background remover with on-device AI (U-2-Netp, MODNet, BiRefNet lite): batch queue, colour/blur/image backgrounds, erase/restore brush, PNG/WebP/JPEG and zip export | [bgremover/](bgremover/) |
 | https://rahul654.github.io/apps/transcribe/ | Speech to text with Whisper running in the browser (WebGPU or WASM): upload or record, streaming results, transcript editor synced to playback, TXT/SRT/VTT/JSON export, local library | [transcribe/](transcribe/) |
 | https://rahul654.github.io/apps/whiteboard/ | Excalidraw-based whiteboard and diagrams: boards library with previews, templates, Mermaid to diagram, PNG/SVG/.excalidraw export and backup, stored in IndexedDB | [whiteboard/](whiteboard/) |
+| https://rahul654.github.io/apps/apiclient/ | Postman-style API client: collections/environments in Postman v2.1 format, pre-request and test scripts (pm.* subset, chai), collection runner with data files, JSON compare, latency stats and reports, workspace zip export/import, optional dependency-free local proxy for CORS/cookies/timing | [apiclient/](apiclient/) |
 
 > GitHub Pages serves a repo named `apps` at `https://<user>.github.io/apps/`, so the repo name *is* the `/apps` part of the URL.
 > The bare root `https://rahul654.github.io/` is served by a different repo named `rahul654.github.io`. If you want a page there, create that repo separately.

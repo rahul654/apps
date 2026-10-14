@@ -25,7 +25,8 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── sandbox/                   ← open websites in sandboxed iframes + HTML playground
 ├── bgremover/                 ← background remover, ONNX models in a worker
 ├── transcribe/                ← speech to text, Whisper in a worker
-└── whiteboard/                ← Excalidraw whiteboard + diagrams, boards in IndexedDB
+├── whiteboard/                ← Excalidraw whiteboard + diagrams, boards in IndexedDB
+└── apiclient/                 ← Postman-style API client, Postman v2.1 model in IndexedDB
 ```
 
 `_site/`, `dist/` and `node_modules/` are build output and are git-ignored.
@@ -48,7 +49,7 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |
 | `splitwise/` | `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
-| `devtools/`, `filetools/`, `recorder/`, `sandbox/`, `bgremover/`, `transcribe/`, `whiteboard/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
+| `devtools/`, `filetools/`, `recorder/`, `sandbox/`, `bgremover/`, `transcribe/`, `whiteboard/`, `apiclient/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
 
 ## Dev Tools (`devtools/`)
 
@@ -144,6 +145,19 @@ Excalidraw-based whiteboard (`@excalidraw/excalidraw` 0.18, MIT). `#/` is the bo
 - **Templates** (`lib/templates.ts`) are built in code by `lib/elements.ts` with fractional indices, bound labels and two-way arrow bindings; `templates.test.ts` checks ids, indices and bindings.
 - **Backup** is one JSON file (`whiteboard-backup`); re-importing skips identical boards and imports conflicting ids as copies.
 - **Browser tests:** Chromium exports through the File System Access API (native save dialog), so delete `window.showSaveFilePicker` in an init script to observe downloads. The jsdom smoke test mocks `components/BoardEditor` (Excalidraw needs a canvas).
+
+## API Client (`apiclient/`)
+
+Postman-style API client. Everything lives in IndexedDB (`apiclient` DB) via `store/Workspace.tsx`; prefs in `apiclient:prefs:v1`.
+
+- **The internal model is Postman Collection v2.1** (`lib/postman/types.ts`), so import/export is lossless: keep unknown fields, never "convert". Every item/folder/response gets an `id` (schema-legal extra). `normalize.ts` upgrades v2.0 (auth objects → attribute arrays). Exports are validated in tests with `ajv-draft-04` against `lib/postman/__schemas__/collection-v2.1.0.json` (official); `environment.json` there is hand-written because Postman publishes no reachable environment schema.
+- **Variable precedence is Postman's**: local > iteration data > environment > request > folder > collection > globals (`lib/variables.ts`); environment beats collection on purpose.
+- **Scripts** (`lib/scripts/runtime.ts`): `sandboxMain` is stringified into a `sandbox="allow-scripts"` iframe (`host.ts`), so it must stay self-contained (no imports, no outer variables). chai is inlined from `chai/chai.js?raw`, loaded lazily on first run. Unit tests run the same function in-process via `node-env.ts`. `pm.sendRequest` is relayed to the host so it follows the direct/proxy mode. Scripts are stored in the Postman `event` array (`edit.ts: setEventCode`).
+- `lib/execute.ts` is the single send pipeline (build → collection/folder/request pre-request scripts → send → test scripts → history + variable changes); the editor and the runner both use it. The runner (`lib/runner/runner.ts`) is pure with an injected executor.
+- **Store gotchas**: actions dispatched before IndexedDB opens are queued and flushed; unsaved request drafts live in a mutable `drafts` map, and `draftVersion` is deliberately a context memo dependency so edits re-render.
+- **Proxy**: `proxy/apiclient-proxy.mjs` is dependency-free Node, copied into `dist/` by the Vite plugin in `vite.config.ts`; `lib/proxy/proxy.test.ts` spawns it on port 4326 against a test server on 4325 (keep those ports free when running tests). Direct mode sends with `credentials: 'omit'` and can't set forbidden headers or read `Set-Cookie`; the UI says so rather than pretending.
+- **CSS gotcha**: `.table-wrap` must stay `position: relative`; the absolutely positioned `.sr-only` headers otherwise resolve against `.main` and create horizontal overflow on wide tables.
+- Browser checks need a CORS-enabled test API; the request and response tab strips share names (Body, Headers), so scope selectors to `section[aria-label="Response"]`.
 
 ## Splitwise app (`splitwise/`)
 
