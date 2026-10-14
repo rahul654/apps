@@ -1,0 +1,6 @@
+{
+  "name": "onnxruntime-node",
+  "version": "0.0.0-stub",
+  "description": "Empty stand-in. transformers.js lists onnxruntime-node as a dependency for Node.js, but the browser build never loads it. Replaced via package.json overrides to keep installs small (~540 MB).",
+  "main": "index.js"
+}
