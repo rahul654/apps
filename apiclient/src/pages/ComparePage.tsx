@@ -7,7 +7,7 @@ import { formatTime } from '../lib/format';
 import { walkItems } from '../lib/postman/items';
 import { isItemGroup } from '../lib/postman/normalize';
 import type { PmItem } from '../lib/postman/types';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 
 interface Source {
   id: string;
@@ -16,7 +16,7 @@ interface Source {
 }
 
 export default function ComparePage() {
-  const { state } = useWorkspace();
+  const { state } = useAppStore();
   const [params] = useSearchParams();
   const sources = useMemo<Source[]>(() => {
     const out: Source[] = state.history.map((h) => ({ id: `h:${h.id}`, label: `${formatTime(h.at)} · ${h.method} ${h.url.slice(0, 80)} · ${h.status}`, body: h.response.bodyText }));

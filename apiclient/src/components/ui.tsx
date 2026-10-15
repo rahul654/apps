@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { sparklinePath } from '../lib/latency/stats';
 import { IconClose, IconPlus } from './Icons';
 
@@ -152,19 +152,34 @@ export function StatusBadge({ status, text }: { status: number; text?: string })
   );
 }
 
-export function useToast(): [ReactNode, (msg: string) => void] {
-  const [msg, setMsg] = useState<string | null>(null);
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+/** A transient status message; with an action (e.g. Undo) it stays longer and shows a button. */
+export function useToast(): [ReactNode, (msg: string, action?: ToastAction) => void] {
+  const [toast, setToast] = useState<{ msg: string; action?: ToastAction; n: number } | null>(null);
   useEffect(() => {
-    if (!msg) return;
-    const t = window.setTimeout(() => setMsg(null), 4000);
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), toast.action ? 10000 : 4000);
     return () => window.clearTimeout(t);
-  }, [msg]);
-  const node = msg ? (
+  }, [toast]);
+  const show = useCallback((msg: string, action?: ToastAction) => setToast((t) => ({ msg, action, n: (t?.n ?? 0) + 1 })), []);
+  const node = toast ? (
     <div className="toast" role="status">
-      {msg}
+      <span>{toast.msg}</span>
+      {toast.action && (
+        <button type="button" className="btn small" onClick={() => {
+          toast.action!.onClick();
+          setToast(null);
+        }}>
+          {toast.action.label}
+        </button>
+      )}
     </div>
   ) : null;
-  return [node, setMsg];
+  return [node, show];
 }
 
 /** Reads a File as text, for imports. */

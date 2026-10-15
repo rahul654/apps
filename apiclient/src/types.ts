@@ -34,11 +34,4 @@ export interface CollectionRecord {
   updatedAt: string;
 }
 
-export interface Workspace {
-  collections: PmCollection[];
-  environments: PmEnvironmentFile[];
-  globals: PmEnvironmentFile;
-  activeEnvironmentId: string | null;
-}
-
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;

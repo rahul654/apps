@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { IconCheck, IconWarn } from '../components/Icons';
 import { pingProxy, type ProxyStatus } from '../lib/request/send';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 
 export default function ProxyPage() {
-  const { state, dispatch } = useWorkspace();
+  const { state, dispatch } = useAppStore();
   const prefs = state.prefs;
   const [status, setStatus] = useState<ProxyStatus | null>(null);
   const [checking, setChecking] = useState(false);

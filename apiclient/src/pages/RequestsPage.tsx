@@ -5,11 +5,11 @@ import { Sidebar } from '../components/Sidebar';
 import { findItem } from '../lib/postman/items';
 import { collectionId, isItemGroup } from '../lib/postman/normalize';
 import type { PmItem, PmItemGroup } from '../lib/postman/types';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 
-export function WorkspacePage() {
+export function RequestsPage() {
   const { cid, iid, fid } = useParams();
-  const { state } = useWorkspace();
+  const { state } = useAppStore();
   const collection = cid ? state.collections.find((c) => collectionId(c) === cid) : undefined;
   const targetId = iid ?? fid ?? null;
   const loc = collection && targetId ? findItem(collection, targetId) : null;

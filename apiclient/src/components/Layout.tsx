@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { applyTheme, getTheme, type ThemeChoice } from '../lib/prefs';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
+import { WorkspaceSelect } from './WorkspaceSwitcher';
 import { IconBox, IconChart, IconClock, IconDiff, IconInfo, IconLayers, IconMonitor, IconMoon, IconPlay, IconPlug, IconSend, IconSun } from './Icons';
 
 const NEXT: Record<ThemeChoice, ThemeChoice> = { system: 'light', light: 'dark', dark: 'system' };
@@ -14,10 +15,10 @@ function ThemeIcon({ theme }: { theme: ThemeChoice }) {
 }
 
 export function EnvironmentSelect({ compact = false }: { compact?: boolean }) {
-  const { state, dispatch } = useWorkspace();
+  const { state, dispatch } = useAppStore();
   return (
     <label className={compact ? 'env-select compact' : 'env-select'}>
-      <span className="sr-only">Active environment</span>
+      <span className="sr-only">Active environment (this workspace)</span>
       <select className="input compact" value={state.activeEnvironmentId ?? ''} onChange={(e) => dispatch({ type: 'environment/active', id: e.target.value || null })} title="Active environment">
         <option value="">No environment</option>
         {state.environments.map((e) => (
@@ -45,7 +46,7 @@ const NAV = [
 export function Layout({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<ThemeChoice>(getTheme);
   useEffect(() => applyTheme(theme), [theme]);
-  const { state } = useWorkspace();
+  const { state } = useAppStore();
   return (
     <div className="app">
       <header className="topbar">
@@ -69,6 +70,7 @@ export function Layout({ children }: { children: ReactNode }) {
             proxy
           </NavLink>
         )}
+        <WorkspaceSelect className="topbar-ws" />
         <EnvironmentSelect compact />
         <button type="button" className="btn ghost icon" onClick={() => setTheme(NEXT[theme])} aria-label={`${LABEL[theme]} (click to change)`} title={LABEL[theme]}>
           <ThemeIcon theme={theme} />

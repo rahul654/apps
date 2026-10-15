@@ -10,7 +10,7 @@ import { buildRequest } from '../lib/request/build';
 import { toCurl, toFetch } from '../lib/request/snippets';
 import { scriptHost } from '../lib/scripts/host';
 import { varsFromList } from '../lib/variables';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 import { HTTP_METHODS } from '../types';
 import { AuthEditor, BodyEditor, ScriptsEditor, headersToRows } from './editors';
 import { IconSave, IconSend } from './Icons';
@@ -20,7 +20,7 @@ import { KVEditor, Tabs, useToast } from './ui';
 type Tab = 'params' | 'headers' | 'body' | 'auth' | 'scripts' | 'examples' | 'docs' | 'code';
 
 export function RequestEditor({ collection, parents, item }: { collection: PmCollection; parents: PmItemGroup[]; item: PmItem }) {
-  const { state, dispatch, drafts, bump } = useWorkspace();
+  const { state, dispatch, drafts, bump } = useAppStore();
   const cid = collectionId(collection);
   const draft = (drafts.get(item.id!) as PmItem | undefined) ?? item;
   const setDraft = useCallback(
@@ -59,14 +59,16 @@ export function RequestEditor({ collection, parents, item }: { collection: PmCol
     const ac = new AbortController();
     abortRef.current = ac;
     setSending(true);
+    // The response may arrive after a workspace switch; its effects belong to this one.
+    const ws = state.activeWorkspaceId;
     try {
       const res = await executeItem({ collection, parents, item: draft, environment: env, globals: state.globals, prefs: state.prefs, files: getFile, host: scriptHost(), signal: ac.signal });
       setResult(res);
-      dispatch({ type: 'history/add', entry: res.history });
-      if (res.changes.environment && env) dispatch({ type: 'environment/put', env: mergeValues(env, res.changes.environment) });
+      dispatch({ type: 'history/add', entry: res.history, ws });
+      if (res.changes.environment && env) dispatch({ type: 'environment/put', env: mergeValues(env, res.changes.environment), ws });
       else if (res.changes.environment && !env && Object.keys(res.changes.environment).length) showToast('Script set environment variables, but no environment is active');
-      if (res.changes.globals) dispatch({ type: 'globals/set', globals: mergeValues(state.globals, res.changes.globals) });
-      if (res.changes.collection) dispatch({ type: 'collection/put', collection: mergeCollectionVariables(collection, res.changes.collection) });
+      if (res.changes.globals) dispatch({ type: 'globals/set', globals: mergeValues(state.globals, res.changes.globals), ws });
+      if (res.changes.collection) dispatch({ type: 'collection/put', collection: mergeCollectionVariables(collection, res.changes.collection), ws });
       if (res.response.error?.kind !== 'abort') setTab((t) => t);
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e));
@@ -74,7 +76,7 @@ export function RequestEditor({ collection, parents, item }: { collection: PmCol
       setSending(false);
       abortRef.current = null;
     }
-  }, [sending, collection, parents, draft, env, state.globals, state.prefs, dispatch, showToast]);
+  }, [sending, collection, parents, draft, env, state.globals, state.prefs, state.activeWorkspaceId, dispatch, showToast]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { useWorkspace } from './store/Workspace';
-import { WorkspacePage } from './pages/WorkspacePage';
+import { useAppStore } from './store/AppStore';
+import { RequestsPage } from './pages/RequestsPage';
 
 const EnvironmentsPage = lazy(() => import('./pages/EnvironmentsPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
@@ -12,6 +12,7 @@ const LatencyPage = lazy(() => import('./pages/LatencyPage'));
 const DataPage = lazy(() => import('./pages/DataPage'));
 const ProxyPage = lazy(() => import('./pages/ProxyPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
+const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage'));
 
 const TITLES: [RegExp, string][] = [
   [/^\/env/, 'Environments'],
@@ -20,13 +21,15 @@ const TITLES: [RegExp, string][] = [
   [/^\/compare/, 'Compare'],
   [/^\/latency/, 'Latency'],
   [/^\/data/, 'Import & export'],
+  [/^\/workspaces/, 'Workspaces'],
   [/^\/proxy/, 'Proxy'],
   [/^\/about/, 'About'],
 ];
 
 export default function App() {
   const { pathname } = useLocation();
-  const { state } = useWorkspace();
+  const { state } = useAppStore();
+  const ws = state.activeWorkspaceId;
   useEffect(() => {
     const t = TITLES.find(([re]) => re.test(pathname))?.[1];
     document.title = t ? `${t} · API Client` : 'API Client';
@@ -36,7 +39,7 @@ export default function App() {
     return (
       <Layout>
         <div className="page centered">
-          <span className="spinner" aria-hidden="true" /> Loading your workspace…
+          <span className="spinner" aria-hidden="true" /> Loading your workspaces…
         </div>
       </Layout>
     );
@@ -55,19 +58,21 @@ export default function App() {
           </div>
         }
       >
+        {/* Pages holding local state about one workspace's items remount when the workspace changes. */}
         <Routes>
-          <Route path="/" element={<WorkspacePage />} />
-          <Route path="/r/:cid/:iid" element={<WorkspacePage />} />
-          <Route path="/c/:cid" element={<WorkspacePage />} />
-          <Route path="/f/:cid/:fid" element={<WorkspacePage />} />
-          <Route path="/env" element={<EnvironmentsPage />} />
-          <Route path="/env/:id" element={<EnvironmentsPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          <Route path="/runner" element={<RunnerPage />} />
-          <Route path="/runner/:runId" element={<RunnerPage />} />
-          <Route path="/compare" element={<ComparePage />} />
-          <Route path="/latency" element={<LatencyPage />} />
+          <Route path="/" element={<RequestsPage key={ws} />} />
+          <Route path="/r/:cid/:iid" element={<RequestsPage key={ws} />} />
+          <Route path="/c/:cid" element={<RequestsPage key={ws} />} />
+          <Route path="/f/:cid/:fid" element={<RequestsPage key={ws} />} />
+          <Route path="/env" element={<EnvironmentsPage key={ws} />} />
+          <Route path="/env/:id" element={<EnvironmentsPage key={ws} />} />
+          <Route path="/history" element={<HistoryPage key={ws} />} />
+          <Route path="/runner" element={<RunnerPage key={ws} />} />
+          <Route path="/runner/:runId" element={<RunnerPage key={ws} />} />
+          <Route path="/compare" element={<ComparePage key={ws} />} />
+          <Route path="/latency" element={<LatencyPage key={ws} />} />
           <Route path="/data" element={<DataPage />} />
+          <Route path="/workspaces" element={<WorkspacesPage />} />
           <Route path="/proxy" element={<ProxyPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

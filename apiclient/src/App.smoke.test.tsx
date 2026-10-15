@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Smoke test: every route renders without React errors against a seeded workspace, the request
- * editor shows resolved snippets, the sidebar creates requests, and the store persists to
- * (fake) IndexedDB. Sending real requests is covered in the browser check.
+ * editor shows resolved snippets, the sidebar creates requests, workspaces switch/create/delete
+ * and stay isolated, curl imports into a new workspace, and the store persists to (fake) IndexedDB. Sending real requests is covered in the browser check.
  */
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
@@ -16,7 +16,8 @@ import envFixture from './lib/postman/__fixtures__/env.postman_environment.json'
 import { openStore, STORES } from './lib/db';
 import { normalizeCollection, normalizeEnvironment } from './lib/postman/normalize';
 import { listRequests } from './lib/postman/items';
-import { WorkspaceProvider, type WorkspaceState } from './store/Workspace';
+import { AppStoreProvider, type InitialData } from './store/AppStore';
+import { DEFAULT_WORKSPACE_ID, emptyWorkspaceData } from './lib/workspaces';
 import type { HistoryEntry } from './types';
 
 beforeAll(() => {
@@ -35,9 +36,9 @@ const env = normalizeEnvironment(JSON.parse(JSON.stringify(envFixture)));
 const cid = collection.info._postman_id!;
 const login = listRequests(collection)[0].item;
 const hist = (over: Partial<HistoryEntry>): HistoryEntry => ({ id: 'h', at: '2024-01-01T00:00:00.000Z', method: 'GET', url: 'https://a/b', status: 200, statusText: 'OK', ok: true, time: 12, size: 10, timings: { total: 12, source: 'wall-clock' }, via: 'direct', request: { headers: [], body: null }, response: { headers: [{ key: 'content-type', value: 'application/json' }], bodyText: '{"a":1}', contentType: 'application/json', binary: false }, ...over });
-const seeded: Partial<WorkspaceState> = { collections: [collection], environments: [env], activeEnvironmentId: env.id!, history: [hist({ id: 'h1', time: 10 }), hist({ id: 'h2', time: 30, at: '2024-01-01T00:01:00.000Z', response: { headers: [], bodyText: '{"a":2,"b":[1]}', contentType: 'application/json', binary: false } })] };
+const seeded: InitialData = { collections: [collection], environments: [env], activeEnvironmentId: env.id!, history: [hist({ id: 'h1', time: 10 }), hist({ id: 'h2', time: 30, at: '2024-01-01T00:01:00.000Z', response: { headers: [], bodyText: '{"a":2,"b":[1]}', contentType: 'application/json', binary: false } })] };
 
-async function renderAt(path: string, initial: Partial<WorkspaceState> = seeded, storeFactory?: () => Promise<Awaited<ReturnType<typeof openStore>>>) {
+async function renderAt(path: string, initial: InitialData = seeded, storeFactory?: () => Promise<Awaited<ReturnType<typeof openStore>>>) {
   const errors: unknown[] = [];
   const spy = vi.spyOn(console, 'error').mockImplementation((...args) => errors.push(args));
   const el = document.createElement('div');
@@ -47,9 +48,9 @@ async function renderAt(path: string, initial: Partial<WorkspaceState> = seeded,
     root.render(
       <StrictMode>
         <MemoryRouter initialEntries={[path]}>
-          <WorkspaceProvider initial={initial} storeFactory={storeFactory}>
+          <AppStoreProvider initial={initial} storeFactory={storeFactory}>
             <App />
-          </WorkspaceProvider>
+          </AppStoreProvider>
         </MemoryRouter>
       </StrictMode>,
     );
@@ -131,7 +132,8 @@ describe('app', () => {
       ['/history', 'https://a/b'],
       ['/latency', 'p95'],
       ['/runner', 'Collection runner'],
-      ['/data', 'Export everything'],
+      ['/data', 'Export all workspaces'],
+      ['/workspaces', 'Default always exists'],
       ['/proxy', 'not reachable'],
       ['/about', 'Postman compatibility'],
     ] as const) {
@@ -176,6 +178,78 @@ describe('app', () => {
     const rows = await store.getAll<{ id: string; data: { info: { name: string } } }>(STORES.collections);
     expect(rows.map((r) => r.data.info.name)).toEqual(['Persisted']);
     store.close();
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  const twoWorkspaces = (): InitialData => ({
+    workspaces: [
+      { id: DEFAULT_WORKSPACE_ID, name: 'Default', isDefault: true, createdAt: '1', updatedAt: '1' },
+      { id: 'ws-b', name: 'Second', createdAt: '2', updatedAt: '2' },
+    ],
+    data: {
+      [DEFAULT_WORKSPACE_ID]: { ...emptyWorkspaceData(), collections: [collection], environments: [env], activeEnvironmentId: env.id! },
+      'ws-b': { ...emptyWorkspaceData(), environments: [{ id: 'env-b', name: 'B only', values: [] }] },
+    },
+  });
+  const select = async (el: HTMLSelectElement, value: string) => {
+    await act(async () => {
+      el.value = value;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  };
+
+  it('the workspace switcher shows only the current workspace’s collections and environments', async () => {
+    const { el, errors, done } = await renderAt(`/r/${cid}/${login.id}`, twoWorkspaces());
+    const ws = el.querySelector<HTMLSelectElement>('.topbar select[title="Workspace"]')!;
+    expect([...ws.options].map((o) => o.textContent)).toEqual(['Default', 'Second']);
+    const envSel = () => [...el.querySelector<HTMLSelectElement>('.topbar select[title="Active environment"]')!.options].map((o) => o.textContent);
+    expect(envSel()).toEqual(['No environment', 'Staging']);
+    // An unsaved edit is kept per workspace.
+    await type(el.querySelector<HTMLInputElement>('input[aria-label="Request name"]')!, 'Draft name');
+    await select(ws, 'ws-b');
+    expect(el.textContent).toContain('No collections yet'); // left the request page: it belongs to Default
+    expect(envSel()).toEqual(['No environment', 'B only']);
+    expect([...ws.options].map((o) => o.textContent)).toEqual(['Default (1 unsaved)', 'Second']);
+    await select(ws, DEFAULT_WORKSPACE_ID);
+    await click(el.querySelector('button[aria-label="Expand Realistic API"]'));
+    await click(el.querySelector('button[aria-label="Expand Auth"]'));
+    await click(byText(el, '.tree-link', 'Login'));
+    expect(el.querySelector<HTMLInputElement>('input[aria-label="Request name"]')!.value).toBe('Draft name');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('workspaces page creates, switches, and deletes with undo; Default has no delete button', async () => {
+    const { el, errors, done } = await renderAt('/workspaces', twoWorkspaces());
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    expect(el.querySelector('button[aria-label="Delete workspace Default"]')).toBeNull();
+    await type(el.querySelector<HTMLInputElement>('input[placeholder="e.g. Payments team"]')!, 'Third');
+    await click(byText(el, 'button', 'Create'));
+    expect(el.querySelector<HTMLSelectElement>('.topbar select[title="Workspace"]')!.value).not.toBe(DEFAULT_WORKSPACE_ID);
+    expect(el.querySelector('.ws-item.selected')?.textContent).toContain('Third');
+    await click(el.querySelector('button[aria-label="Delete workspace Second"]'));
+    expect(el.querySelectorAll('.ws-item')).toHaveLength(2);
+    await click(byText(el, '.toast button', 'Undo'));
+    expect([...el.querySelectorAll('.ws-item')].map((x) => x.querySelector('strong')?.textContent)).toEqual(['Default', 'Second', 'Third']);
+    expect(el.textContent).toContain('0 collections · 1 environments');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('curl import asks for a target and can create a new workspace', async () => {
+    const { el, errors, done } = await renderAt('/data', twoWorkspaces());
+    await type(el.querySelector<HTMLTextAreaElement>('textarea')!, "curl -X POST https://api.example.com/items -H 'Content-Type: application/json' -d '{\"a\":1}'");
+    await click(byText(el, 'button', 'Import curl'));
+    const target = el.querySelector<HTMLSelectElement>('.import-panel select')!;
+    expect(target.value).toBe(DEFAULT_WORKSPACE_ID);
+    await select(target, '__new__');
+    await type(el.querySelector<HTMLInputElement>('.import-panel input:not([type])')!, 'From curl');
+    await click(byText(el, '.import-panel button', 'Import'));
+    const ws = el.querySelector<HTMLSelectElement>('.topbar select[title="Workspace"]')!;
+    expect(ws.options[ws.selectedIndex].textContent).toBe('From curl');
+    expect(el.querySelector<HTMLInputElement>('.url-input')!.value).toBe('https://api.example.com/items');
+    expect(el.querySelector('.tree')?.textContent).toContain('Imported');
     expect(errors).toEqual([]);
     await done();
   });

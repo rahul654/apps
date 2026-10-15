@@ -7,9 +7,10 @@ import { collectionId, isItemGroup } from '../lib/postman/normalize';
 import { toCollectionFile, collectionFileName } from '../lib/postman/export';
 import type { PmCollection, PmItemGroup, PmItemOrGroup } from '../lib/postman/types';
 import { downloadText } from '../lib/download';
-import { newCollection, useWorkspace } from '../store/Workspace';
+import { newCollection, useAppStore } from '../store/AppStore';
 import { IconChevron, IconFolder, IconMenu, IconMore, IconPlus } from './Icons';
 import { EnvironmentSelect } from './Layout';
+import { WorkspaceSelect } from './WorkspaceSwitcher';
 import { MethodTag } from './ui';
 
 interface MenuItem {
@@ -189,7 +190,7 @@ function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents:
 }
 
 export function Sidebar({ activeId, activeCollectionId }: { activeId: string | null; activeCollectionId: string | null }) {
-  const { state, dispatch } = useWorkspace();
+  const { state, dispatch } = useAppStore();
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [collapsed, setCollapsed] = useState(false);
@@ -332,12 +333,14 @@ export function Sidebar({ activeId, activeCollectionId }: { activeId: string | n
         </button>
         <h2>Collections</h2>
         <div className="spacer" />
-        <div className="sidebar-env">
-          <EnvironmentSelect compact />
-        </div>
         <button type="button" className="btn ghost small icon" aria-label="New collection" title="New collection" onClick={() => setCreating(true)}>
           <IconPlus size={16} />
         </button>
+      </div>
+      {/* On phones the top bar has no room for the pickers, so they live here. */}
+      <div className="sidebar-switchers">
+        <WorkspaceSelect />
+        <EnvironmentSelect compact />
       </div>
       <div className="sidebar-body" id="sidebar-body">
         {body}

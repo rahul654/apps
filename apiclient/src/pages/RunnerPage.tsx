@@ -14,7 +14,7 @@ import { parseDataFile, type DataRow } from '../lib/runner/data';
 import { runCollection, type RunReport, type RunStep } from '../lib/runner/runner';
 import { scriptHost } from '../lib/scripts/host';
 import type { VarMap } from '../lib/variables';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 
 function folderOptions(c: PmCollection): { id: string; name: string }[] {
   const out: { id: string; name: string }[] = [];
@@ -25,7 +25,7 @@ function folderOptions(c: PmCollection): { id: string; name: string }[] {
 }
 
 export default function RunnerPage() {
-  const { state, dispatch } = useWorkspace();
+  const { state, dispatch } = useAppStore();
   const [params] = useSearchParams();
   const { runId } = useParams();
   const navigate = useNavigate();
@@ -38,6 +38,13 @@ export default function RunnerPage() {
   const [live, setLive] = useState<RunReport | null>(null);
   const [running, setRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [toast, showToast] = useToast();
   useEffect(() => {
     if (params.get('c')) setCid(params.get('c')!);
@@ -53,6 +60,8 @@ export default function RunnerPage() {
     abortRef.current = ac;
     setRunning(true);
     const id = `run-${new Date().toISOString().replace(/[:.]/g, '-')}-${uuid().slice(0, 8)}`;
+    // Everything the run writes goes to the workspace it started in, even after a switch.
+    const ws = state.activeWorkspaceId;
     const host = scriptHost();
     // Variables are threaded through the run so pm.environment.set in one request is seen by the next.
     let env: PmEnvironmentFile | null = state.environments.find((e) => e.id === envId) ?? null;
@@ -66,25 +75,26 @@ export default function RunnerPage() {
         local = res.changes.local;
         if (res.changes.environment && env) {
           env = mergeValues(env, res.changes.environment);
-          dispatch({ type: 'environment/put', env });
+          dispatch({ type: 'environment/put', env, ws });
         }
         if (res.changes.globals) {
           globals = mergeValues(globals, res.changes.globals);
-          dispatch({ type: 'globals/set', globals });
+          dispatch({ type: 'globals/set', globals, ws });
         }
         if (res.changes.collection) {
           col = mergeCollectionVariables(col, res.changes.collection);
-          dispatch({ type: 'collection/put', collection: col });
+          dispatch({ type: 'collection/put', collection: col, ws });
         }
-        dispatch({ type: 'history/add', entry: res.history });
+        dispatch({ type: 'history/add', entry: res.history, ws });
         return { status: res.response.status, statusText: res.response.statusText, time: res.response.time, size: res.response.size, url: res.prepared.url, method: res.prepared.method, tests: res.tests, error: res.response.error?.message ?? res.scriptErrors[0], nextRequest: res.nextRequest, responseId: res.history.id };
       },
       { id: () => id, signal: ac.signal, onStart: (r) => setLive({ ...r }), onStep: (_s, r) => setLive({ ...r, steps: [...r.steps] }) },
     );
-    setLive(rep);
-    dispatch({ type: 'run/put', run: rep });
-    setRunning(false);
+    dispatch({ type: 'run/put', run: rep, ws });
     abortRef.current = null;
+    if (!mounted.current) return; // switched workspace or left the page; the run is saved in its workspace
+    setLive(rep);
+    setRunning(false);
     navigate(`/runner/${rep.id}`, { replace: true });
   };
 

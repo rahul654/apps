@@ -7,7 +7,12 @@ export default function AboutPage() {
         <h1>Privacy, limits and compatibility</h1>
         <section className="card">
           <h2>Your data stays in this browser</h2>
-          <p className="small">Collections, environments, globals, history and run reports are stored in IndexedDB on this device under the <code>apiclient</code> database; preferences in localStorage. Nothing is uploaded anywhere; there is no account and no backend. Requests go straight from your browser to the API you call (or to the local proxy on your machine). Clearing site data for this origin deletes everything, so <Link to="/data">export a workspace zip</Link> now and then. Files picked for form-data or binary bodies are kept in memory only.</p>
+          <p className="small">Workspaces with their collections, environments, globals, history and run reports are stored in IndexedDB on this device under the <code>apiclient</code> database; preferences in localStorage. Nothing is uploaded anywhere; there is no account and no backend. Requests go straight from your browser to the API you call (or to the local proxy on your machine). Clearing site data for this origin deletes everything, so <Link to="/data">export all workspaces</Link> now and then. Files picked for form-data or binary bodies are kept in memory only.</p>
+        </section>
+        <section className="card">
+          <h2>Workspaces</h2>
+          <p className="small">Each workspace has its own collections, environments, globals, active environment, history and saved runs; every page shows the current one, picked in the top bar. Proxy settings and the theme are shared. <strong>Default</strong> always exists. Unsaved request edits are kept per workspace while you switch (until the tab closes). <Link to="/workspaces">Manage workspaces</Link>.</p>
+          <p className="small"><Link to="/data">Export all workspaces</Link> gives one zip: <code>workspaces/&lt;name&gt;/</code> holds only Postman files (collections, environments, <code>globals.postman_globals.json</code>), and <code>_apiclient/&lt;name&gt;/</code> holds history, runs and settings. To move a workspace to Postman, unzip and import <code>workspaces/&lt;name&gt;</code> with <strong>Import → Folders</strong>.</p>
         </section>
         <section className="card">
           <h2>What a web page can’t do (and the proxy can)</h2>
@@ -36,7 +41,7 @@ export default function AboutPage() {
           <h2>Postman compatibility</h2>
           <ul className="bullets small">
             <li>The internal model <em>is</em> Postman Collection v2.1, so import → export keeps everything, including fields this app doesn’t understand.</li>
-            <li>Imports: Collection v2.1 and v2.0, environment and globals JSON, Postman “Export data” zips, OpenAPI 3 (basic), curl commands. Collection v1 is not supported.</li>
+            <li>Imports: Collection v2.1 and v2.0, environment and globals JSON, Postman “Export data” zips, <code>export-from-postman.mjs</code> zips (optionally one app workspace per Postman workspace), OpenAPI 3 (basic), curl commands. Collection v1 is not supported.</li>
             <li>Exports are validated against the official v2.1 JSON schema in this app’s test suite.</li>
             <li>Variable precedence follows Postman: local → data → environment → collection chain (request, folder, collection) → globals.</li>
           </ul>

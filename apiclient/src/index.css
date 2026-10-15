@@ -145,7 +145,7 @@ kbd { font-size: 0.78rem; font-weight: 600; padding: 0 5px; border: 1px solid va
 
 /* ---------- Shell ---------- */
 .app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100vh; height: 100dvh; }
-.topbar { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 6px 12px; background: var(--card); border-bottom: 1px solid var(--border); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.topbar { position: relative; display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 6px 12px; background: var(--card); border-bottom: 1px solid var(--border); min-width: 0; overflow-x: auto; scrollbar-width: none; } /* positioned: sr-only labels stay inside the scroller instead of widening the page */
 .logo { display: flex; align-items: center; gap: 8px; padding: 4px 8px 4px 4px; border-radius: 10px; color: var(--text); text-decoration: none; font-weight: 700; font-size: 1.02rem; white-space: nowrap; flex: none; }
 .logo:hover { background: var(--hover); }
 .logo-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: var(--on-accent); }
@@ -156,9 +156,18 @@ kbd { font-size: 0.78rem; font-weight: 600; padding: 0 5px; border: 1px solid va
 .main { position: relative; min-height: 0; display: flex; flex-direction: column; }
 .env-select { flex: none; }
 .env-select select { max-width: 180px; }
+.ws-select { display: flex; align-items: center; gap: 2px; flex: none; min-width: 0; }
+.ws-select select { max-width: 180px; font-weight: 600; }
+/* Make room for the workspace + environment pickers: shrink them, drop the logo text, then the nav labels;
+   at 900px and below the workspace picker leaves the top bar (only its Workspaces link stays) and moves into the requests sidebar. */
+@media (max-width: 1440px) { .topbar .ws-select select, .topbar .env-select select { max-width: 130px; } }
+@media (min-width: 1281px) and (max-width: 1440px) { .logo-text { display: none; } }
+@media (max-width: 760px) { .topbar .env-select select { max-width: 110px; } }
+@media (max-width: 900px) { .topbar .ws-select-label { display: none; } }
 .proxy-pill { text-decoration: none; margin: 0; }
-@media (max-width: 1100px) { .nav-label { display: none; } .nav-link { padding: 7px; } }
+@media (max-width: 1280px) { .nav-label { display: none; } .nav-link { padding: 7px; } }
 @media (max-width: 640px) { .logo-text { display: none; } .topbar .env-select { display: none; } .nav-link { padding: 7px 5px; } .topbar { gap: 4px; padding: 6px 8px; } }
+@media (max-width: 380px) { .nav-link { padding: 7px 3px; } .nav { gap: 0; } }
 
 .page { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 20px; }
 .page-inner { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
@@ -261,8 +270,14 @@ input[type='checkbox'] { accent-color: var(--accent); width: 16px; height: 16px;
 .sidebar { border-right: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; min-height: 0; }
 .sidebar-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .sidebar-head h2 { font-size: 0.95rem; }
-.sidebar-env { display: none; }
-@media (max-width: 640px) { .sidebar-env { display: block; } .sidebar-env select { max-width: 130px; } }
+.sidebar-switchers { display: none; }
+@media (max-width: 900px) {
+  .sidebar-switchers { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--border); min-width: 0; }
+  .sidebar-switchers > * { flex: 1 1 0; min-width: 0; }
+  .sidebar-switchers .ws-select-label { flex: 1; min-width: 0; }
+  .sidebar-switchers select.input { width: 100%; max-width: none; }
+}
+@media (min-width: 641px) and (max-width: 900px) { .sidebar-switchers .env-select { display: none; } } /* still in the top bar */
 .sidebar-body { flex: 1; overflow: auto; padding: 6px; }
 .tree { list-style: none; margin: 0; padding: 0; }
 .tree ul { list-style: none; margin: 0; padding-left: 14px; }
@@ -372,3 +387,17 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.35); }
 .bullets { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 0.92rem; overflow-wrap: anywhere; }
 .progress { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width 0.2s; }
+
+/* ---------- Workspaces ---------- */
+.ws-create { flex-direction: row; align-items: flex-end; flex-wrap: wrap; }
+.ws-item { flex-direction: row; flex-wrap: wrap; }
+.ws-item .name { gap: 6px; flex-wrap: nowrap; min-width: 0; }
+.ws-actions { gap: 6px; justify-content: flex-end; }
+@media (max-width: 640px) { .ws-actions { width: 100%; justify-content: flex-start; } }
+.import-panel { display: flex; flex-direction: column; gap: 10px; }
+.import-panel fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.import-panel legend { font-size: 0.82rem; font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.radio { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 0.9rem; }
+.radio input { accent-color: var(--accent); margin-top: 3px; flex: none; }
+.tree-paths { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--border); font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.list-item.selected { border-color: var(--accent); }

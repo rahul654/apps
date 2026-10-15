@@ -3,10 +3,10 @@ import { MethodTag, Sparkline } from '../components/ui';
 import { downloadText } from '../lib/download';
 import { formatMs, formatTime } from '../lib/format';
 import { groupSamples, latencyCsv, latencyHtml, latencyJson, type LatencySample } from '../lib/latency/report';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 
 export default function LatencyPage() {
-  const { state } = useWorkspace();
+  const { state } = useAppStore();
   const [filter, setFilter] = useState('');
   const [sel, setSel] = useState<string | null>(null);
   const samples = useMemo<LatencySample[]>(() => state.history.filter((h) => !h.error).map((h) => ({ at: h.at, method: h.method, url: h.url, status: h.status, ok: h.ok, time: h.time, size: h.size, timings: h.timings, via: h.via })), [state.history]);

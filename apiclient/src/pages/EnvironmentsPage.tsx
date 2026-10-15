@@ -5,7 +5,7 @@ import { IconPlus, IconTrash } from '../components/Icons';
 import { downloadText } from '../lib/download';
 import { environmentFileName, globalsFileName, toEnvironmentFile } from '../lib/postman/export';
 import type { PmEnvironmentFile } from '../lib/postman/types';
-import { newEnvironment, useWorkspace } from '../store/Workspace';
+import { newEnvironment, useAppStore } from '../store/AppStore';
 
 function VarsEditor({ env, onChange, label }: { env: PmEnvironmentFile; onChange: (e: PmEnvironmentFile) => void; label: string }) {
   const [showSecrets, setShowSecrets] = useState(false);
@@ -25,7 +25,7 @@ function VarsEditor({ env, onChange, label }: { env: PmEnvironmentFile; onChange
 }
 
 export default function EnvironmentsPage() {
-  const { state, dispatch } = useWorkspace();
+  const { state, dispatch } = useAppStore();
   const { id } = useParams();
   const navigate = useNavigate();
   const [toast, showToast] = useToast();
@@ -42,7 +42,7 @@ export default function EnvironmentsPage() {
         <div className="page-head">
           <div className="stack-sm">
             <h1>Environments</h1>
-            <p className="muted small">Variables for <code>{'{{name}}'}</code> placeholders. The active environment is picked in the top bar. Values marked secret are still stored in plain text in this browser.</p>
+            <p className="muted small">Variables for <code>{'{{name}}'}</code> placeholders. Environments and globals belong to the current workspace (<strong>{state.workspace.name}</strong>); the active one is picked in the top bar. Values marked secret are still stored in plain text in this browser.</p>
           </div>
           <button type="button" className="btn primary" onClick={create}>
             <IconPlus size={16} /> New environment

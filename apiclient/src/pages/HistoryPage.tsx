@@ -5,7 +5,7 @@ import { MethodTag, StatusBadge } from '../components/ui';
 import { IconTrash } from '../components/Icons';
 import type { ExecResult } from '../lib/execute';
 import { formatBytes, formatMs, formatTime } from '../lib/format';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 import type { HistoryEntry } from '../types';
 
 /** Rebuilds a response-panel result from a stored history entry. */
@@ -22,7 +22,7 @@ export function historyToResult(h: HistoryEntry): ExecResult {
 }
 
 export default function HistoryPage() {
-  const { state, dispatch } = useWorkspace();
+  const { state, dispatch } = useAppStore();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<string | null>(null);
   const list = state.history.filter((h) => !q || `${h.method} ${h.url} ${h.requestName ?? ''} ${h.status}`.toLowerCase().includes(q.toLowerCase()));

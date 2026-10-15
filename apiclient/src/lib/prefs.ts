@@ -1,4 +1,6 @@
 /** Preferences in localStorage, namespaced: the GitHub Pages origin is shared by every app. */
+import { DEFAULT_WORKSPACE_ID } from './workspaces';
+
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
 const THEME_KEY = 'apiclient:theme';
@@ -32,9 +34,11 @@ export interface Prefs {
   historyLimit: number;
   /** Word-wrap the response body. */
   wrap: boolean;
+  /** The workspace shown in every page. Proxy settings and theme are app-wide. */
+  activeWorkspaceId: string;
 }
 
-export const DEFAULT_PREFS: Prefs = { mode: 'direct', proxyUrl: 'http://localhost:4399', historyLimit: 500, wrap: true };
+export const DEFAULT_PREFS: Prefs = { mode: 'direct', proxyUrl: 'http://localhost:4399', historyLimit: 500, wrap: true, activeWorkspaceId: DEFAULT_WORKSPACE_ID };
 
 export function loadPrefs(): Prefs {
   try {
@@ -46,6 +50,7 @@ export function loadPrefs(): Prefs {
       proxyUrl: typeof p.proxyUrl === 'string' && p.proxyUrl ? p.proxyUrl : DEFAULT_PREFS.proxyUrl,
       historyLimit: typeof p.historyLimit === 'number' && p.historyLimit > 0 ? p.historyLimit : DEFAULT_PREFS.historyLimit,
       wrap: typeof p.wrap === 'boolean' ? p.wrap : true,
+      activeWorkspaceId: typeof p.activeWorkspaceId === 'string' && p.activeWorkspaceId ? p.activeWorkspaceId : DEFAULT_WORKSPACE_ID,
     };
   } catch {
     return DEFAULT_PREFS;

@@ -5,7 +5,7 @@ import { collectionFileName, toCollectionFile } from '../lib/postman/export';
 import { countRequests, updateItem } from '../lib/postman/items';
 import { collectionId } from '../lib/postman/normalize';
 import type { PmCollection, PmItemGroup, PmVariable } from '../lib/postman/types';
-import { useWorkspace } from '../store/Workspace';
+import { useAppStore } from '../store/AppStore';
 import { AuthEditor, ScriptsEditor } from './editors';
 import { IconPlay } from './Icons';
 import { KVEditor, Tabs, useToast } from './ui';
@@ -13,7 +13,7 @@ import { KVEditor, Tabs, useToast } from './ui';
 type Tab = 'overview' | 'variables' | 'auth' | 'scripts';
 
 export function CollectionSettings({ collection, folder, parents }: { collection: PmCollection; folder?: PmItemGroup; parents?: PmItemGroup[] }) {
-  const { dispatch } = useWorkspace();
+  const { dispatch } = useAppStore();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('overview');
   const [toast, showToast] = useToast();
