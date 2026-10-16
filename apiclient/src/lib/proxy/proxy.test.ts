@@ -67,11 +67,20 @@ afterAll(async () => {
 describe('apiclient-proxy', () => {
   it('answers ping with CORS headers for an allowed origin', async () => {
     const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/ping`, { headers: { origin: ORIGIN } });
-    expect(await res.json()).toEqual({ ok: true, name: 'apiclient-proxy', version: '1.0.0' });
+    expect(await res.json()).toEqual({ ok: true, name: 'apiclient-proxy', version: '1.1.0', pid: proxy.pid });
     expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
     const pre = await fetch(`http://127.0.0.1:${PROXY_PORT}/send`, { method: 'OPTIONS', headers: { origin: ORIGIN, 'access-control-request-method': 'POST' } });
     expect(pre.status).toBe(204);
     expect(pre.headers.get('access-control-allow-headers')).toBe('content-type');
+    expect(pre.headers.get('access-control-allow-private-network')).toBeNull();
+  });
+  it('opts in to Chrome private-network preflights from an allowed public origin', async () => {
+    const pre = await fetch(`http://127.0.0.1:${PROXY_PORT}/send`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://rahul654.github.io', 'access-control-request-method': 'POST', 'access-control-request-private-network': 'true' },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-private-network')).toBe('true');
   });
   it('refuses unknown or missing origins', async () => {
     expect((await send({ url: 'http://x' }, 'https://evil.example')).status).toBe(403);
@@ -113,5 +122,63 @@ describe('apiclient-proxy', () => {
     const bad = await fetch(`http://127.0.0.1:${PROXY_PORT}/send`, { method: 'POST', headers: { origin: ORIGIN }, body: '{' });
     expect(bad.status).toBe(400);
     expect((await send({ url: 'ftp://x/', headers: [] })).status).toBe(502);
+  });
+});
+
+/** Spawns the proxy and resolves with its exit code and output once it either listens or exits. */
+function startProxy(port: number): Promise<{ child: ChildProcess; listening: boolean; code: number | null; out: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [script, '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    const onData = (d: Buffer) => {
+      out += d.toString();
+      if (out.includes('listening on')) resolve({ child, listening: true, code: null, out });
+    };
+    child.stdout!.on('data', onData);
+    child.stderr!.on('data', onData);
+    child.once('exit', (code) => resolve({ child, listening: false, code, out }));
+  });
+}
+
+describe('apiclient-proxy port handling', () => {
+  it('a new run on the same port stops the running proxy and takes over', async () => {
+    const oldExit = new Promise<number | null>((r) => proxy.once('exit', (code) => r(code)));
+    const next = await startProxy(PROXY_PORT);
+    expect(next.listening).toBe(true);
+    expect(next.out).toMatch(/already running on port 4326; stopping it/);
+    expect(await oldExit).toBe(0);
+    const ping = await (await fetch(`http://127.0.0.1:${PROXY_PORT}/ping`, { headers: { origin: ORIGIN } })).json();
+    expect(ping.pid).toBe(next.child.pid);
+    proxy = next.child; // later tests (and afterAll) use the new one
+  });
+
+  it('leaves a port held by another program alone and explains', async () => {
+    const other = http.createServer((_q, r) => r.end('not a proxy'));
+    await new Promise<void>((r) => other.listen(4327, '127.0.0.1', r));
+    try {
+      const run = await startProxy(4327);
+      expect(run.listening).toBe(false);
+      expect(run.code).toBe(1);
+      expect(run.out).toMatch(/used by another program/);
+      expect(await (await fetch('http://127.0.0.1:4327/')).text()).toBe('not a proxy');
+    } finally {
+      await new Promise<void>((r) => other.close(() => r()));
+    }
+  });
+});
+
+// Runs last: it stops the proxy.
+describe('apiclient-proxy shutdown', () => {
+  it('ignores /shutdown from other origins, then exits when the app asks', async () => {
+    const refused = await fetch(`http://127.0.0.1:${PROXY_PORT}/shutdown`, { method: 'POST', headers: { origin: 'https://evil.example' } });
+    expect(refused.status).toBe(403);
+    expect((await fetch(`http://127.0.0.1:${PROXY_PORT}/ping`, { headers: { origin: ORIGIN } })).status).toBe(200);
+
+    const exited = new Promise<number | null>((r) => proxy.once('exit', (code) => r(code)));
+    const res = await fetch(`http://127.0.0.1:${PROXY_PORT}/shutdown`, { method: 'POST', headers: { origin: ORIGIN } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(await exited).toBe(0);
+    await expect(fetch(`http://127.0.0.1:${PROXY_PORT}/ping`, { headers: { origin: ORIGIN } })).rejects.toThrow();
   });
 });

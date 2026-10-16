@@ -51,15 +51,28 @@ To check what's in the team before exporting: left menu **Workspaces** → open 
 
 ## Step 3: run the script
 
+The quickest way is the API Client's **Postman export & import** page (Data → "Postman export &
+import"): set the file name and copy the one-line command. macOS / Linux:
+
 ```bash
-cd apiclient
-POSTMAN_API_KEY=PMAK-xxxxxxxx node scripts/export-from-postman.mjs ~/Downloads/postman-export-acme.zip
+curl -fsSL https://rahul654.github.io/apps/apiclient/export-from-postman.mjs -o /tmp/export-from-postman.mjs && node /tmp/export-from-postman.mjs "$HOME/Downloads/postman-export-acme.zip"
 ```
 
-- The key is read from the environment variable only; it's never written anywhere.
+Windows (PowerShell):
+
+```powershell
+iwr https://rahul654.github.io/apps/apiclient/export-from-postman.mjs -OutFile "$env:TEMP\export-from-postman.mjs"; node "$env:TEMP\export-from-postman.mjs" "$HOME\Downloads\postman-export-acme.zip"
+```
+
+From a checkout of this repo: `node apiclient/scripts/export-from-postman.mjs <out.zip>` (after
+`npm install` in `apiclient/`).
+
+- It asks **"Paste your Postman API key (input hidden)"**: paste and press Enter. Nothing shows
+  while you paste. The key never appears in the command or shell history and is never written
+  anywhere. (Setting `POSTMAN_API_KEY` beforehand also works.)
 - The output path is optional. Without it the zip goes to
   `~/Downloads/postman-export-<today>.zip`. The script refuses to overwrite an existing file.
-- Needs Node 20+ and `npm install` done once in `apiclient/`.
+- Needs Node.js 18+. The downloaded script is self-contained; nothing else is installed.
 
 What you'll see:
 
@@ -103,8 +116,8 @@ any more, and a leaked key gives full access to the team's collections.
 Repeat steps 1–5 per team, giving each zip a different name:
 
 ```bash
-POSTMAN_API_KEY=PMAK-… node scripts/export-from-postman.mjs ~/Downloads/postman-export-acme.zip
-POSTMAN_API_KEY=PMAK-… node scripts/export-from-postman.mjs ~/Downloads/postman-export-side-projects.zip
+node /tmp/export-from-postman.mjs "$HOME/Downloads/postman-export-acme.zip"           # paste the acme key
+node /tmp/export-from-postman.mjs "$HOME/Downloads/postman-export-side-projects.zip"  # paste the side-projects key
 ```
 
 Import each zip with **Merge**. With **Create one workspace per Postman workspace**, two teams
@@ -134,3 +147,7 @@ Every file opens in Postman too (Import → drop the file), so the zip doubles a
   per collection or environment plus a few per workspace). The script retries on 429 responses.
 - The desktop app's **Settings → Data** tab no longer offers a full export in Postman 11+
   (only "Export Scratch Pad Data"), which is why this script exists.
+
+## Going the other way
+
+To upload into Postman with every value intact, see [IMPORT-TO-POSTMAN.md](IMPORT-TO-POSTMAN.md).

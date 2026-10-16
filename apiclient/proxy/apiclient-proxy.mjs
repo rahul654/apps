@@ -2,6 +2,9 @@
 /**
  * API Client local proxy — dependency-free. Run:  node apiclient-proxy.mjs [--port 4399] [--allow origin,origin]
  *
+ * If another run of this proxy already holds the port, the new one stops it and takes over.
+ * A different program on the port is never touched; pick another --port instead.
+ *
  * Lets the browser app send requests that a web page cannot: to servers without CORS, with
  * forbidden headers (Cookie, Host, User-Agent, Origin…), and it returns the full response
  * including Set-Cookie, plus a timing breakdown (DNS, connect, TLS, TTFB, download).
@@ -9,15 +12,18 @@
  * It listens on 127.0.0.1 only and accepts requests only from allowed origins
  * (default: http://localhost:*, http://127.0.0.1:*, https://rahul654.github.io).
  *
- * Endpoints:  GET /ping   → {ok, name, version}
- *             POST /send  → {method, url, headers:[[k,v]], body?: base64} → {status, statusText, headers, setCookie, body, timings}
+ * Endpoints:  GET /ping       → {ok, name, version, pid}
+ *             POST /send      → {method, url, headers:[[k,v]], body?: base64} → {status, statusText, headers, setCookie, body, timings}
+ *             POST /shutdown  → {ok: true}, then the proxy exits (used by the app's Stop button)
+ *
+ * The app's Start button needs the one-time launcher: proxy/install-launcher.sh (Linux).
  */
 import http from 'node:http';
 import https from 'node:https';
 import zlib from 'node:zlib';
 import { URL } from 'node:url';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const MAX_BODY = 50 * 1024 * 1024;
 const MAX_REDIRECTS = 10;
 
@@ -216,12 +222,27 @@ export function createServer(opts) {
     };
     if (req.method === 'OPTIONS') {
       if (!allowed) return send(403, { error: `Origin ${origin || '(none)'} is not allowed. Start the proxy with --allow ${origin || 'http://your-origin'}` });
-      res.writeHead(204, { 'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '600', vary: 'origin' });
+      res.writeHead(204, {
+        'access-control-allow-origin': origin,
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
+        'access-control-allow-headers': 'content-type',
+        'access-control-max-age': '600',
+        vary: 'origin',
+        // Chrome's Private Network Access preflight: a public https page may reach localhost only if we opt in.
+        ...(req.headers['access-control-request-private-network'] === 'true' ? { 'access-control-allow-private-network': 'true' } : {}),
+      });
       return res.end();
     }
     if (!allowed) return send(403, { error: `Origin ${origin || '(none)'} is not allowed. Start the proxy with --allow ${origin || 'http://your-origin'}` });
     const path = (req.url || '/').split('?')[0];
-    if (req.method === 'GET' && path === '/ping') return send(200, { ok: true, name: 'apiclient-proxy', version: VERSION });
+    if (req.method === 'GET' && path === '/ping') return send(200, { ok: true, name: 'apiclient-proxy', version: VERSION, pid: process.pid });
+    if (req.method === 'POST' && path === '/shutdown') {
+      log('shutdown requested by', origin);
+      send(200, { ok: true });
+      // Let the response flush before closing.
+      setImmediate(() => (opts.onShutdown ?? (() => server.close()))());
+      return;
+    }
     if (req.method === 'POST' && path === '/send') {
       let payload;
       try {
@@ -240,22 +261,99 @@ export function createServer(opts) {
         return send(502, { error: e.message, status: 0, timings: { total: round(performance.now() - started) } });
       }
     }
-    send(404, { error: 'Not found. Endpoints: GET /ping, POST /send' });
+    send(404, { error: 'Not found. Endpoints: GET /ping, POST /send, POST /shutdown' });
   });
   return server;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function listen(server, port, host) {
+  return new Promise((resolve, reject) => {
+    const onError = (e) => {
+      server.off('listening', onListening);
+      reject(e);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve();
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, host);
+  });
+}
+
+/**
+ * Called when the port is taken. If the taker is an API Client proxy (an older run of this
+ * script), ask it to shut down — or end it by pid if it predates /shutdown — and wait for the
+ * port to free up. Anything else on the port is left alone.
+ * Returns 'freed', 'foreign' (another program), or 'stuck' (our proxy but it wouldn't stop).
+ */
+export async function takeOverPort(port, host) {
+  const base = `http://${host}:${port}`;
+  const headers = { origin: 'http://localhost' };
+  let info = null;
+  try {
+    const res = await fetch(`${base}/ping`, { headers, signal: AbortSignal.timeout(2000) });
+    info = await res.json().catch(() => null);
+    // A proxy started with a custom --allow list that excludes localhost answers 403 with this message.
+    if (res.status === 403 && /Start the proxy with --allow/.test(info?.error ?? '')) return 'stuck';
+  } catch {
+    return 'foreign';
+  }
+  if (info?.name !== 'apiclient-proxy') return 'foreign';
+  console.log(`An API Client proxy (v${info.version}${info.pid ? `, pid ${info.pid}` : ''}) is already running on port ${port}; stopping it…`);
+  const res = await fetch(`${base}/shutdown`, { method: 'POST', headers, signal: AbortSignal.timeout(2000) }).catch(() => null);
+  if (!res?.ok && info.pid) {
+    try {
+      process.kill(info.pid, 'SIGTERM');
+    } catch {
+      /* already gone, or not ours to signal */
+    }
+  }
+  for (let i = 0; i < 50; i++) {
+    const free = await new Promise((resolve) => {
+      const probe = http.createServer();
+      probe.once('error', () => resolve(false));
+      probe.listen(port, host, () => probe.close(() => resolve(true)));
+    });
+    if (free) return 'freed';
+    await sleep(100);
+  }
+  return 'stuck';
 }
 
 const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 if (isMain) {
   const opts = parseArgs(process.argv.slice(2));
-  const server = createServer(opts);
-  server.listen(opts.port, opts.host, () => {
-    console.log(`API Client proxy v${VERSION} listening on http://${opts.host}:${opts.port}`);
-    console.log(`Allowed origins: ${opts.allow}`);
-    console.log('Press Ctrl+C to stop.');
+  const server = createServer({
+    ...opts,
+    onShutdown: () => {
+      console.log('Stopped from the app (or by a newer proxy taking over the port).');
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 1000).unref(); // don't wait on keep-alive connections
+    },
   });
-  server.on('error', (e) => {
-    console.error(e.code === 'EADDRINUSE' ? `Port ${opts.port} is already in use. Try --port 4400.` : e.message);
+  const fail = (msg) => {
+    console.error(msg);
     process.exit(1);
-  });
+  };
+  try {
+    await listen(server, opts.port, opts.host);
+  } catch (e) {
+    if (e.code !== 'EADDRINUSE') fail(e.message);
+    const outcome = await takeOverPort(opts.port, opts.host);
+    if (outcome === 'foreign') fail(`Port ${opts.port} is used by another program (not the API Client proxy). Pick another port, e.g. --port ${opts.port + 1}, and set the same port in the app.`);
+    if (outcome === 'stuck') fail(`An API Client proxy on port ${opts.port} didn't stop. Stop it with Ctrl+C in its terminal, or use another port.`);
+    try {
+      await listen(server, opts.port, opts.host);
+    } catch (e2) {
+      fail(e2.code === 'EADDRINUSE' ? `Port ${opts.port} was taken again before this proxy could start. Run the command again.` : e2.message);
+    }
+  }
+  server.on('error', (e) => console.error(e.message));
+  console.log(`API Client proxy v${VERSION} listening on http://${opts.host}:${opts.port}`);
+  console.log(`Allowed origins: ${opts.allow}`);
+  console.log('Keep this window open. Stop with Ctrl+C or the Stop button in the app. Running the command again restarts it.');
 }

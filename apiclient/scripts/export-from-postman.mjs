@@ -4,7 +4,7 @@
  * API Client's Data page imports (into one workspace, or one app workspace per Postman
  * workspace using manifest.workspaces), and whose files also open in Postman itself.
  *
- *   POSTMAN_API_KEY=PMAK-… node scripts/export-from-postman.mjs [out.zip]
+ *   node scripts/export-from-postman.mjs [out.zip]     (asks for the API key; or set POSTMAN_API_KEY)
  *
  * Step-by-step guide, including how to pick the team the key is created in: EXPORT-FROM-POSTMAN.md
  *
@@ -16,57 +16,32 @@
  *   manifest.json                                             what was exported, and anything skipped
  *
  * Every collection is validated against the checked-in official v2.1 schema before it's written.
- * The key is read from the environment only and never written anywhere. Secret-type variable
+ * The key is asked for at a hidden prompt (or read from POSTMAN_API_KEY) and never written anywhere. Secret-type variable
  * values come back from the API masked, so they are listed in the manifest for you to re-enter.
  */
 import { existsSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import Ajv04 from 'ajv-draft-04';
+import addFormats from 'ajv-formats';
+import { strToU8, zipSync } from 'fflate';
+import collectionSchema from '../src/lib/postman/__schemas__/collection-v2.1.0.json' with { type: 'json' };
+import { createApi, readApiKey } from './lib/postman-api.mjs';
 
-const require = createRequire(import.meta.url);
-const { zipSync, strToU8 } = require('fflate');
-const Ajv04 = require('ajv-draft-04');
-const addFormats = require('ajv-formats');
-const collectionSchema = require('../src/lib/postman/__schemas__/collection-v2.1.0.json');
-
-const API = 'https://api.getpostman.com';
-const key = process.env.POSTMAN_API_KEY;
-if (!key) {
-  console.error('Set POSTMAN_API_KEY first (create one at https://postman.co/settings/me/api-keys).');
-  process.exit(2);
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log('Usage: node export-from-postman.mjs [out.zip]\nAsks for your Postman API key (or reads POSTMAN_API_KEY). Guide: EXPORT-FROM-POSTMAN.md');
+  process.exit(0);
 }
-const outPath = process.argv[2] ?? join(process.env.HOME ?? '.', 'Downloads', `postman-export-${new Date().toISOString().slice(0, 10)}.zip`);
+const outPath = process.argv[2] ?? join(process.env.HOME ?? process.env.USERPROFILE ?? '.', 'Downloads', `postman-export-${new Date().toISOString().slice(0, 10)}.zip`);
 if (existsSync(outPath)) {
   console.error(`${outPath} already exists; pass a different output path.`);
   process.exit(2);
 }
+const api = createApi(await readApiKey());
+const get = api.get;
 
 const ajv = new Ajv04({ strict: false, allErrors: true });
 addFormats(ajv);
 const validateCollection = ajv.compile(collectionSchema);
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-let calls = 0;
-
-/** GET with retry on rate limits (429) and transient errors. */
-async function get(path) {
-  for (let attempt = 0; ; attempt++) {
-    calls++;
-    const res = await fetch(API + path, { headers: { 'X-Api-Key': key, Accept: 'application/json' } });
-    if (res.status === 429 || res.status >= 500) {
-      if (attempt >= 5) throw new Error(`${path}: HTTP ${res.status} after ${attempt} retries`);
-      const wait = Number(res.headers.get('retry-after') ?? 0) * 1000 || 2000 * 2 ** attempt;
-      console.error(`  ${res.status} on ${path}, waiting ${wait / 1000}s`);
-      await sleep(wait);
-      continue;
-    }
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`${path}: HTTP ${res.status} ${body.slice(0, 200)}`);
-    }
-    return res.json();
-  }
-}
 
 const safeName = (s) => (s || 'untitled').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 100);
 const unique = (used, name, ext) => {
@@ -201,7 +176,7 @@ writeFileSync(outPath, zipSync(files, { level: 6 }));
 
 const nc = manifest.workspaces.reduce((n, w) => n + w.collections.length, 0);
 const ne = manifest.workspaces.reduce((n, w) => n + w.environments.length, 0);
-console.error(`\n✔ ${nc} collection(s), ${ne} environment(s), ${manifest.workspaces.filter((w) => w.globals).length} globals file(s) → ${outPath} (${calls} API calls)`);
+console.error(`\n✔ ${nc} collection(s), ${ne} environment(s), ${manifest.workspaces.filter((w) => w.globals).length} globals file(s) → ${outPath} (${api.calls} API calls)`);
 if (manifest.warnings.length) console.error(`${manifest.warnings.length} collection(s) have schema warnings (still exported); see manifest.json inside the zip.`);
 if (manifest.skipped.length) console.error(`${manifest.skipped.length} item(s) skipped; see manifest.json inside the zip.`);
 if (manifest.maskedSecrets.length) console.error(`${manifest.maskedSecrets.length} secret value(s) came back masked and must be re-entered; listed in manifest.json.`);

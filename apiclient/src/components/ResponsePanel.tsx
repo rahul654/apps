@@ -4,6 +4,7 @@ import type { ExecResult } from '../lib/execute';
 import { formatBytes, formatMs, prettyJson } from '../lib/format';
 import { forbiddenHeaders } from '../lib/request/build';
 import { IconCheck, IconClose, IconWarn } from './Icons';
+import { ProxyControl } from './ProxyControl';
 import { CodeView, StatusBadge, Tabs } from './ui';
 
 type Tab = 'body' | 'headers' | 'cookies' | 'tests' | 'console' | 'timing';
@@ -49,9 +50,12 @@ export function ResponsePanel({ result, sending, onSaveExample, onCancel }: { re
             <strong>{r.error.kind === 'cors' ? 'The browser blocked this request (CORS or network)' : r.error.kind === 'proxy' ? 'Proxy problem' : r.error.kind === 'abort' ? 'Cancelled' : 'Request failed'}</strong>
             <span>{r.error.message}</span>
             {r.error.kind === 'cors' && (
-              <span>
-                A web page can only call APIs that answer with CORS headers for this origin; the browser hides whether it was CORS, DNS, TLS or a refused connection. For any other server, start the <Link to="/proxy">local proxy</Link> and switch to proxy mode.
-              </span>
+              <>
+                <span>
+                  A web page can only call APIs that answer with CORS headers for this origin; the browser hides whether it was CORS, DNS, TLS or a refused connection. For any other server, use the <Link to="/proxy">local proxy</Link>: start it here, then send again.
+                </span>
+                <ProxyControl compact />
+              </>
             )}
           </div>
         </div>

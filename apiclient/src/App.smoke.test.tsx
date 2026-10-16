@@ -125,6 +125,37 @@ describe('app', () => {
     await done();
   });
 
+  it('proxy page shows a copyable one-line start command that follows the port field', async () => {
+    const { el, errors, done } = await renderAt('/proxy');
+    const code = () => el.querySelector('.command-box code')!.textContent;
+    expect(code()).toMatch(/^curl -fsSL .*\/apiclient-proxy\.mjs -o \/tmp\/apiclient-proxy\.mjs && node \/tmp\/apiclient-proxy\.mjs --port 4399$/);
+    const input = el.querySelector<HTMLInputElement>('.port-field input')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '4500');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(code()).toMatch(/--port 4500$/);
+    expect(el.textContent).toContain('not running on port 4500');
+    const win = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Windows (PowerShell)')!;
+    await act(async () => win.click());
+    expect(code()).toMatch(/^iwr .* -OutFile "\$env:TEMP\\apiclient-proxy\.mjs"; node "\$env:TEMP\\apiclient-proxy\.mjs" --port 4500$/);
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('postman page shows copyable export and import commands that follow the fields', async () => {
+    const { el, errors, done } = await renderAt('/postman');
+    const codes = () => [...el.querySelectorAll('.command-box code')].map((c) => c.textContent);
+    expect(codes()[0]).toMatch(/^curl -fsSL .*\/export-from-postman\.mjs -o \/tmp\/export-from-postman\.mjs && node \/tmp\/export-from-postman\.mjs "\$HOME\/Downloads\/postman-export-\d{4}-\d\d-\d\d\.zip"$/);
+    expect(codes()[1]).toMatch(/import-to-postman\.mjs "\$HOME\/Downloads\/apiclient-all-workspaces-[\d-]+\.zip" --per-workspace$/);
+    const one = [...el.querySelectorAll<HTMLInputElement>('input[name=target]')][1];
+    await act(async () => one.click());
+    expect(codes()[1]).toMatch(/--workspace "Team Workspace"$/);
+    expect(el.textContent).not.toContain('PMAK-1');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
   it('environments, history, latency, compare, runner, data, proxy and about pages render', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
     for (const [path, expected] of [
@@ -134,7 +165,7 @@ describe('app', () => {
       ['/runner', 'Collection runner'],
       ['/data', 'Export all workspaces'],
       ['/workspaces', 'Default always exists'],
-      ['/proxy', 'not reachable'],
+      ['/proxy', 'not running on port 4399'],
       ['/about', 'Postman compatibility'],
     ] as const) {
       const { el, errors, done } = await renderAt(path);

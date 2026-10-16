@@ -401,3 +401,22 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.35); }
 .radio input { accent-color: var(--accent); margin-top: 3px; flex: none; }
 .tree-paths { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--border); font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .list-item.selected { border-color: var(--accent); }
+
+/* Proxy start/stop control (Proxy page and the CORS error box) */
+.proxy-control { display: flex; flex-direction: column; gap: 8px; }
+.proxy-control .note { margin: 0; }
+.proxy-control.compact .btn { min-height: 32px; padding: 4px 10px; font-size: 0.86rem; }
+.details > summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.details[open] > summary { margin-bottom: 8px; }
+.details { display: flex; flex-direction: column; gap: 8px; }
+
+/* Proxy instructions page */
+.proxy-page { max-width: 880px; }
+.steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; }
+.steps > li { padding-left: 4px; }
+.steps > li > * + * { margin-top: 6px; }
+.port-field { max-width: 160px; }
+.command-box { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--code-bg); }
+.command-box code { flex: 1; min-width: 0; font-size: 0.84rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.command-box .btn { flex: none; }
+details.card > summary { cursor: pointer; font-weight: 600; }

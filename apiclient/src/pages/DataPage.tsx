@@ -158,7 +158,7 @@ export default function DataPage() {
         <div className="page-head">
           <div className="stack-sm">
             <h1>Import &amp; export</h1>
-            <p className="muted small">Collections are Postman Collection v2.1 files; environments and globals are Postman environment files. Imports go into the workspace you pick; exports cover this workspace (<strong>{ws.name}</strong>) or all of them. <Link to="/workspaces">Manage workspaces</Link>.</p>
+            <p className="muted small">Collections are Postman Collection v2.1 files; environments and globals are Postman environment files. Imports go into the workspace you pick; exports cover this workspace (<strong>{ws.name}</strong>) or all of them. <Link to="/workspaces">Manage workspaces</Link>. Moving data to or from Postman itself? Use the one-line <Link to="/postman">Postman export &amp; import</Link> commands.</p>
           </div>
         </div>
         <div className="grid-2">

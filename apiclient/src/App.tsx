@@ -11,6 +11,7 @@ const ComparePage = lazy(() => import('./pages/ComparePage'));
 const LatencyPage = lazy(() => import('./pages/LatencyPage'));
 const DataPage = lazy(() => import('./pages/DataPage'));
 const ProxyPage = lazy(() => import('./pages/ProxyPage'));
+const PostmanPage = lazy(() => import('./pages/PostmanPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const WorkspacesPage = lazy(() => import('./pages/WorkspacesPage'));
 
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/data" element={<DataPage />} />
           <Route path="/workspaces" element={<WorkspacesPage />} />
           <Route path="/proxy" element={<ProxyPage />} />
+          <Route path="/postman" element={<PostmanPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
