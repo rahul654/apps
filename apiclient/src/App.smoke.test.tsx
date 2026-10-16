@@ -64,6 +64,16 @@ async function renderAt(path: string, initial: InitialData = seeded, storeFactor
   return { el, errors, done: async () => { await act(async () => root.unmount()); spy.mockRestore(); } };
 }
 
+/** Waits for text that appears after async work (e.g. the proxy status ping), instead of racing it. */
+async function waitForText(el: HTMLElement, text: string, ms = 5000) {
+  for (let waited = 0; !el.textContent?.includes(text) && waited < ms; waited += 20) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  }
+  expect(el.textContent).toContain(text);
+}
+
 const click = async (el: Element | null | undefined) => {
   if (!el) throw new Error('element not found');
   await act(async () => (el as HTMLElement).click());
@@ -126,6 +136,8 @@ describe('app', () => {
   });
 
   it('proxy page shows a copyable one-line start command that follows the port field', async () => {
+    // No real network: the status ping fails slowly, as on a busy CI runner, so the test must wait for it.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise((_, reject) => setTimeout(() => reject(new TypeError('Failed to fetch')), 300)));
     const { el, errors, done } = await renderAt('/proxy');
     const code = () => el.querySelector('.command-box code')!.textContent;
     expect(code()).toMatch(/^curl -fsSL .*\/apiclient-proxy\.mjs -o \/tmp\/apiclient-proxy\.mjs && node \/tmp\/apiclient-proxy\.mjs --port 4399$/);
@@ -135,7 +147,7 @@ describe('app', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     expect(code()).toMatch(/--port 4500$/);
-    expect(el.textContent).toContain('not running on port 4500');
+    await waitForText(el, 'not running on port 4500'); // after the status ping fails
     const win = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Windows (PowerShell)')!;
     await act(async () => win.click());
     expect(code()).toMatch(/^iwr .* -OutFile "\$env:TEMP\\apiclient-proxy\.mjs"; node "\$env:TEMP\\apiclient-proxy\.mjs" --port 4500$/);
@@ -169,7 +181,7 @@ describe('app', () => {
       ['/about', 'Postman compatibility'],
     ] as const) {
       const { el, errors, done } = await renderAt(path);
-      expect(el.textContent, path).toContain(expected);
+      await waitForText(el, expected);
       expect(errors, path).toEqual([]);
       await done();
     }
