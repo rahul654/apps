@@ -5,6 +5,7 @@ import { openStore } from '../lib/db';
 import { DEFAULT_PREFS } from '../lib/prefs';
 import { DEFAULT_WORKSPACE_ID, emptyWorkspaceData } from '../lib/workspaces';
 import type { HistoryEntry } from '../types';
+import { variableWriteAction } from './variableWrite';
 import { loadAll, newEnvironment, newWorkspaceMeta, persist, reducer, stateFromInitial, viewOf, type Action, type AppState } from './AppStore';
 
 const hist = (id: string): HistoryEntry => ({ id, at: `2024-01-01T00:00:0${id.length}.000Z`, method: 'GET', url: 'https://a', status: 200, statusText: 'OK', ok: true, time: 1, size: 1, timings: { total: 1, source: 'wall-clock' }, via: 'direct', request: { headers: [], body: null }, response: { headers: [], bodyText: '', contentType: '', binary: false } });
@@ -129,5 +130,58 @@ describe('persistence', () => {
     expect(wiped.workspaces.map((w) => w.id)).toEqual([DEFAULT_WORKSPACE_ID]);
     expect(wiped.data[DEFAULT_WORKSPACE_ID]).toEqual(emptyWorkspaceData());
     store.close();
+  });
+});
+
+describe('tab session', () => {
+  it('tabs/set is per workspace, persisted, loaded back, and removed with the workspace or a wipe', async () => {
+    const store = await openStore(new IDBFactory(), 'tabs');
+    let s: AppState = { ...stateFromInitial({}), data: (await loadAll(store, DEFAULT_PREFS)).data };
+    const apply = async (a: Action) => {
+      const prev = s;
+      s = reducer(s, a);
+      await persist(store, a, prev, s);
+    };
+    await apply({ type: 'workspace/create', meta: wsA });
+    await apply({ type: 'tabs/set', ws: DEFAULT_WORKSPACE_ID, tabs: { tabs: [{ id: 'r:c:1' }, { id: 'r:c:2', preview: true }], activeId: 'r:c:2' } });
+    await apply({ type: 'tabs/set', ws: wsA.id, tabs: { tabs: [{ id: 'n:x' }], activeId: 'n:x' } });
+    expect(viewOf(s).tabs.activeId).toBe('r:c:2');
+    expect(run(s, { type: 'tabs/set', ws: 'deleted', tabs: { tabs: [], activeId: null } })).toBe(s);
+    const loaded = await loadAll(store, DEFAULT_PREFS);
+    expect(loaded.session[DEFAULT_WORKSPACE_ID]).toEqual({ tabs: [{ id: 'r:c:1' }, { id: 'r:c:2', preview: true }], activeId: 'r:c:2' });
+    expect(loaded.session[wsA.id].activeId).toBe('n:x');
+    await apply({ type: 'workspace/remove', id: wsA.id });
+    expect(s.session[wsA.id]).toBeUndefined();
+    expect((await loadAll(store, DEFAULT_PREFS)).session[wsA.id]).toBeUndefined();
+    await apply({ type: 'wipe' });
+    expect(s.session).toEqual({});
+    expect((await loadAll(store, DEFAULT_PREFS)).session).toEqual({});
+    store.close();
+  });
+});
+
+describe('variable write-back', () => {
+  const env1 = { ...newEnvironment('Staging'), values: [{ key: 'url', value: 'https://old', type: 'default', enabled: true }] };
+  const col = { info: { _postman_id: 'c1', name: 'API', schema: '' }, item: [{ id: 'f1', name: 'Auth', item: [], variable: [{ key: 'fv', value: '1' }] }], variable: [{ key: 'cv', value: 'a' }] };
+  const base = () => stateFromInitial({ environments: [env1], activeEnvironmentId: env1.id!, collections: [col], globals: { id: 'globals', name: 'Globals', values: [] } });
+  const write = (s: AppState, target: Parameters<typeof variableWriteAction>[1], key: string, value: string) => {
+    const a = variableWriteAction(viewOf(s), target, key, value);
+    expect(a).not.toBeNull();
+    return reducer(s, a!);
+  };
+
+  it('writes to the environment, collection, folder and globals', () => {
+    let s = write(base(), { kind: 'environment', id: env1.id! }, 'url', 'https://new');
+    expect(viewOf(s).environments[0].values).toEqual([{ key: 'url', value: 'https://new', type: 'default', enabled: true }]);
+    s = write(s, { kind: 'environment', id: env1.id! }, 'added', 'x');
+    expect(viewOf(s).environments[0].values.map((v) => v.key)).toEqual(['url', 'added']);
+    s = write(s, { kind: 'collection', cid: 'c1' }, 'cv', 'b');
+    expect(viewOf(s).collections[0].variable).toEqual([{ key: 'cv', value: 'b' }]);
+    s = write(s, { kind: 'folder', cid: 'c1', id: 'f1' }, 'fv', '2');
+    expect((viewOf(s).collections[0].item[0] as { variable: unknown }).variable).toEqual([{ key: 'fv', value: '2' }]);
+    s = write(s, { kind: 'globals' }, 'region', 'eu');
+    expect(viewOf(s).globals.values).toEqual([{ key: 'region', value: 'eu', type: 'default', enabled: true }]);
+    expect(variableWriteAction(viewOf(s), { kind: 'environment', id: 'gone' }, 'k', 'v')).toBeNull();
+    expect(variableWriteAction(viewOf(s), { kind: 'request' }, 'k', 'v')).toBeNull();
   });
 });

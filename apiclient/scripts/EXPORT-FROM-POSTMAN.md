@@ -148,6 +148,14 @@ Every file opens in Postman too (Import → drop the file), so the zip doubles a
 - The desktop app's **Settings → Data** tab no longer offers a full export in Postman 11+
   (only "Export Scratch Pad Data"), which is why this script exists.
 
+## Empty values in the export
+
+The API only sees **shared** values. A value kept only on one computer (a "local" value, shown with
+a crossed-out cloud icon in Postman) comes back empty. The script lists every variable that came
+back empty, both on screen and under `emptyValues` in `manifest.json`. To include them: in Postman,
+click the arrow next to that icon and share the value, then export again. Or fill them in after
+importing.
+
 ## Going the other way
 
 To upload into Postman with every value intact, see [IMPORT-TO-POSTMAN.md](IMPORT-TO-POSTMAN.md).

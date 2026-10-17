@@ -117,7 +117,7 @@ function seedAccount() {
   const team: Ws = { id: nextId(), name: 'Team Workspace', type: 'team', collections: new Map(), environments: new Map(), globals: [] };
   const mine: Ws = { id: nextId(), name: 'My Workspace', type: 'personal', collections: new Map(), environments: new Map(), globals: [{ key: 'g1', value: 'global-value', type: 'default', enabled: true }] };
   addCollection(team, collection('Orders API'));
-  addEnvironment(team, { name: 'orders-uat', values: [{ key: 'url', value: 'https://uat.example.com', type: 'default', enabled: true }, { key: 'auth', value: SECRET, type: 'default', enabled: true }] });
+  addEnvironment(team, { name: 'orders-uat', values: [{ key: 'url', value: 'https://uat.example.com', type: 'default', enabled: true }, { key: 'auth', value: SECRET, type: 'default', enabled: true }, { key: 'local_only', value: '', type: 'default', enabled: true }] });
   addCollection(mine, collection('Scratch'));
   workspaces.push(team, mine);
 }
@@ -165,6 +165,16 @@ describe('export-from-postman + import-to-postman', () => {
     expect(workspaces.find((w) => w.name === 'My Workspace')!.globals).toEqual([{ key: 'g1', value: 'global-value', type: 'default', enabled: true }]);
   });
 
+  it('export lists variables that are empty in the cloud (likely local-only values) and warns', async () => {
+    const zip = join(dir, 'export.zip');
+    const r = await run('export-from-postman.mjs', [zip]);
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/1 variable\(s\) have no value in Postman's cloud/);
+    expect(r.out).toContain('orders-uat/local_only');
+    const manifest = JSON.parse(new TextDecoder().decode(unzipSync(new Uint8Array(readFileSync(zip)))['manifest.json']));
+    expect(manifest.emptyValues).toEqual([{ environment: 'orders-uat', key: 'local_only' }]);
+  });
+
   it('updates same-named items instead of duplicating them, and --skip-existing leaves them alone', async () => {
     const zip = await exportAccount();
     const team = workspaces[0];
@@ -176,6 +186,7 @@ describe('export-from-postman + import-to-postman', () => {
 
     const r = await run('import-to-postman.mjs', [zip, '--workspace', 'team workspace', '--yes']);
     expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/local value that hides the uploaded one/);
     expect(team.environments.size).toBe(1);
     expect(team.environments.get(envUid).values.find((v: any) => v.key === 'auth').value).toBe(SECRET);
     // Both collections land in the one workspace: Orders API updated, Scratch created.

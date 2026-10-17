@@ -112,7 +112,7 @@ describe('migration from version 1', () => {
     expect(await store.get(STORES.environments, [DEFAULT_WORKSPACE_ID, 'e7'])).toMatchObject({ ws: DEFAULT_WORKSPACE_ID, id: 'e7', data: { name: 'Env 07' } });
     store.close();
 
-    // Opening again is a no-op (already version 2).
+    // Opening again is a no-op (already the current version).
     const again = await openStore(idb, 'apiclient');
     expect((await loadAll(again, DEFAULT_PREFS)).data[DEFAULT_WORKSPACE_ID].collections).toHaveLength(45);
     again.close();
@@ -122,7 +122,7 @@ describe('migration from version 1', () => {
       r.onerror = () => rej(r.error);
     });
     expect(raw.version).toBe(DB_VERSION);
-    expect([...raw.objectStoreNames].sort()).toEqual(['collections', 'environments', 'history', 'kv', 'runs', 'workspaces']);
+    expect([...raw.objectStoreNames].sort()).toEqual(['collections', 'drafts', 'environments', 'history', 'kv', 'runs', 'tabs', 'workspaces']);
     expect(await request(raw.transaction('workspaces').objectStore('workspaces').count())).toBe(1);
     raw.close();
   });
@@ -143,5 +143,83 @@ describe('migration from version 1', () => {
     expect(l2.workspaces.map((w) => w.id)).toEqual([DEFAULT_WORKSPACE_ID]);
     expect(l2.data[DEFAULT_WORKSPACE_ID]).toEqual(emptyWorkspaceData());
     s2.close();
+  });
+});
+
+/** Opens a database exactly as the version-2 app created it (multiple workspaces, no tab session). */
+function openV2(idb: IDBFactory, name: string): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = idb.open(name, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      db.createObjectStore('kv', { keyPath: 'key' });
+      db.createObjectStore('workspaces', { keyPath: 'id' });
+      for (const n of ['collections', 'environments', 'history', 'runs']) db.createObjectStore(n, { keyPath: ['ws', 'id'] });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** Writes the rows the version-2 app wrote: Default with 45 collections and 26 environments, plus a second workspace. */
+async function seedV2(db: IDBDatabase) {
+  const tx = db.transaction(['workspaces', 'collections', 'environments', 'history', 'runs'], 'readwrite');
+  const rec = (id: string, name: string, extra: object) => ({ id, name, createdAt: `2024-01-0${id === DEFAULT_WORKSPACE_ID ? 1 : 2}T00:00:00.000Z`, updatedAt: '2024-01-03T00:00:00.000Z', globals: { id: 'globals', name: 'Globals', values: [{ key: 'g', value: name }], _postman_variable_scope: 'globals' }, activeEnvironmentId: null, ...extra });
+  tx.objectStore('workspaces').put(rec(DEFAULT_WORKSPACE_ID, 'Default', { isDefault: true, activeEnvironmentId: 'e3' }));
+  tx.objectStore('workspaces').put(rec('ws-b', 'Team', {}));
+  for (let i = 0; i < 45; i++) tx.objectStore('collections').put({ ws: DEFAULT_WORKSPACE_ID, id: `c${i}`, data: col(`c${i}`, `Collection ${i}`), updatedAt: `2024-01-01T00:00:${String(i).padStart(2, '0')}.000Z` });
+  for (let i = 0; i < 26; i++) tx.objectStore('environments').put({ ws: DEFAULT_WORKSPACE_ID, id: `e${i}`, data: env(`e${i}`, `Env ${String(i).padStart(2, '0')}`) });
+  tx.objectStore('collections').put({ ws: 'ws-b', id: 'c0', data: col('c0', 'Same id in Team'), updatedAt: '2024-01-05T00:00:00.000Z' });
+  for (let i = 0; i < 5; i++) tx.objectStore('history').put({ ws: DEFAULT_WORKSPACE_ID, id: `h${i}`, data: hist(`h${i}`, `2024-02-01T00:00:0${i}.000Z`) });
+  tx.objectStore('runs').put({ ws: 'ws-b', id: 'run-1', data: run('run-1', '2024-03-01T00:00:00.000Z') });
+  await transactionDone(tx);
+}
+
+describe('migration from version 2', () => {
+  it('keeps every workspace row and adds empty tab and draft stores', async () => {
+    const idb = new IDBFactory();
+    const v2 = await openV2(idb, 'apiclient');
+    await seedV2(v2);
+    v2.close();
+
+    const store = await openStore(idb, 'apiclient');
+    const loaded = await loadAll(store, DEFAULT_PREFS);
+    expect(loaded.workspaces.map((w) => [w.id, w.name])).toEqual([[DEFAULT_WORKSPACE_ID, 'Default'], ['ws-b', 'Team']]);
+    const d = loaded.data[DEFAULT_WORKSPACE_ID];
+    expect(d.collections).toHaveLength(45);
+    expect(d.collections[44].info.name).toBe('Collection 44');
+    expect(d.environments).toHaveLength(26);
+    expect(d.environments[3]).toEqual(env('e3', 'Env 03'));
+    expect(d.activeEnvironmentId).toBe('e3');
+    expect(d.history).toHaveLength(5);
+    expect(d.globals.values).toEqual([{ key: 'g', value: 'Default' }]);
+    expect(loaded.data['ws-b'].collections.map((c) => c.info.name)).toEqual(['Same id in Team']);
+    expect(loaded.data['ws-b'].runs.map((r) => r.id)).toEqual(['run-1']);
+    expect(loaded.session).toEqual({});
+    expect(loaded.drafts).toEqual({});
+
+    // The new stores work: tabs and drafts round-trip per workspace, and deleting a workspace removes them.
+    await store.put(STORES.tabs, { ws: DEFAULT_WORKSPACE_ID, tabs: [{ id: 'r:c1:i1' }, { id: 'n:t1', preview: true }], activeId: 'n:t1' });
+    await store.put(STORES.tabs, { ws: 'ws-b', tabs: [{ id: 'r:c0:x' }], activeId: 'r:c0:x' });
+    await store.put(STORES.drafts, { ws: DEFAULT_WORKSPACE_ID, id: 'n:t1', data: { id: 't1', name: 'Draft', request: { method: 'POST' } } });
+    await store.put(STORES.drafts, { ws: 'ws-b', id: 'r:c0:x', data: { name: 'B draft', request: {} } });
+    const again = await loadAll(store, DEFAULT_PREFS);
+    expect(again.session[DEFAULT_WORKSPACE_ID]).toEqual({ tabs: [{ id: 'r:c1:i1' }, { id: 'n:t1', preview: true }], activeId: 'n:t1' });
+    expect(again.drafts[DEFAULT_WORKSPACE_ID]['n:t1']).toMatchObject({ name: 'Draft' });
+    await store.deleteWorkspace('ws-b');
+    const after = await loadAll(store, DEFAULT_PREFS);
+    expect(after.session['ws-b']).toBeUndefined();
+    expect(after.drafts['ws-b']).toBeUndefined();
+    expect(after.drafts[DEFAULT_WORKSPACE_ID]['n:t1']).toBeTruthy();
+    store.close();
+
+    const raw = await new Promise<IDBDatabase>((res, rej) => {
+      const r = idb.open('apiclient');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    expect(raw.version).toBe(3);
+    expect([...raw.objectStoreNames].sort()).toEqual(['collections', 'drafts', 'environments', 'history', 'kv', 'runs', 'tabs', 'workspaces']);
+    raw.close();
   });
 });

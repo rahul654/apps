@@ -36,9 +36,14 @@ export interface Prefs {
   wrap: boolean;
   /** The workspace shown in every page. Proxy settings and theme are app-wide. */
   activeWorkspaceId: string;
+  /** Height in px of the request body editor (set with its drag handle). */
+  editorHeight: number;
 }
 
-export const DEFAULT_PREFS: Prefs = { mode: 'direct', proxyUrl: 'http://localhost:4399', historyLimit: 500, wrap: true, activeWorkspaceId: DEFAULT_WORKSPACE_ID };
+export const EDITOR_HEIGHT = { min: 100, max: 2000, default: 260 } as const;
+export const clampEditorHeight = (h: number): number => Math.round(Math.min(EDITOR_HEIGHT.max, Math.max(EDITOR_HEIGHT.min, h)));
+
+export const DEFAULT_PREFS: Prefs = { mode: 'direct', proxyUrl: 'http://localhost:4399', historyLimit: 500, wrap: true, activeWorkspaceId: DEFAULT_WORKSPACE_ID, editorHeight: EDITOR_HEIGHT.default };
 
 export function loadPrefs(): Prefs {
   try {
@@ -51,6 +56,7 @@ export function loadPrefs(): Prefs {
       historyLimit: typeof p.historyLimit === 'number' && p.historyLimit > 0 ? p.historyLimit : DEFAULT_PREFS.historyLimit,
       wrap: typeof p.wrap === 'boolean' ? p.wrap : true,
       activeWorkspaceId: typeof p.activeWorkspaceId === 'string' && p.activeWorkspaceId ? p.activeWorkspaceId : DEFAULT_WORKSPACE_ID,
+      editorHeight: typeof p.editorHeight === 'number' && Number.isFinite(p.editorHeight) ? clampEditorHeight(p.editorHeight) : EDITOR_HEIGHT.default,
     };
   } catch {
     return DEFAULT_PREFS;

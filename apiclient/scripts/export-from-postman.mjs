@@ -60,6 +60,9 @@ const manifest = {
   skipped: [],
   warnings: [],
   maskedSecrets: [],
+  // Non-secret variables with no value in Postman's cloud: usually values kept only on one computer
+  // (crossed-out cloud icon in Postman), which the API can't read.
+  emptyValues: [],
 };
 
 /** Downloads one collection and writes it. Schema problems are recorded as warnings, not skipped: Postman itself produced the file. */
@@ -112,6 +115,7 @@ for (const ws of workspaces) {
       const { environment } = await get(`/environments/${env.uid}`);
       const values = (environment.values ?? []).map((v) => ({ key: v.key, value: v.value ?? '', type: v.type === 'secret' ? 'secret' : 'default', enabled: v.enabled !== false }));
       for (const v of values) if (v.type === 'secret' && !v.value) manifest.maskedSecrets.push({ environment: environment.name, key: v.key });
+      for (const v of values) if (v.type !== 'secret' && !v.value) manifest.emptyValues.push({ environment: environment.name, key: v.key });
       const file = {
         id: environment.id,
         name: environment.name,
@@ -180,3 +184,11 @@ console.error(`\n✔ ${nc} collection(s), ${ne} environment(s), ${manifest.works
 if (manifest.warnings.length) console.error(`${manifest.warnings.length} collection(s) have schema warnings (still exported); see manifest.json inside the zip.`);
 if (manifest.skipped.length) console.error(`${manifest.skipped.length} item(s) skipped; see manifest.json inside the zip.`);
 if (manifest.maskedSecrets.length) console.error(`${manifest.maskedSecrets.length} secret value(s) came back masked and must be re-entered; listed in manifest.json.`);
+if (manifest.emptyValues.length) {
+  const list = manifest.emptyValues.map((v) => `${v.environment}/${v.key}`);
+  console.error(`\n⚠ ${list.length} variable(s) have no value in Postman's cloud, so they're empty in the zip:`);
+  console.error(`  ${list.slice(0, 12).join(', ')}${list.length > 12 ? `, … (${list.length - 12} more in manifest.json)` : ''}`);
+  console.error('  If they have values in your Postman app, those are local values (crossed-out cloud icon), which only exist on');
+  console.error('  that computer and are invisible to the API. In Postman, use the arrow next to the icon to share the value,');
+  console.error('  then export again, or fill them in after importing.');
+}

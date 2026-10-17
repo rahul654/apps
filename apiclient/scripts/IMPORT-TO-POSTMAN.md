@@ -113,3 +113,4 @@ Back on `https://<team-domain>/settings/me/api-keys`, delete the key.
 | `has no workspace in the export. Use --workspace "Name"` | The file has no workspace structure (e.g. a single collection). Use `--workspace`. |
 | `Can't reach the Postman API` | Check the internet connection, VPN or proxy. |
 | Postman shows "Secrets detected" afterwards | Choose **Override**. The values are already saved. |
+| A variable looks empty (or old) in the Postman app after an update, with a crossed-out cloud icon | The upload is correct; that computer has a **local value** that overrides the shared one (often left behind by an earlier import through Postman's Import screen). Click the arrow next to the icon and reset the local value / use the shared value. The API can't change local values. |

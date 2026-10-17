@@ -1,7 +1,8 @@
 /** Editing helpers that keep Postman's url object and event array in sync with the UI. */
 import { uuid } from '../id';
+import { updateItem } from './items';
 import { parseRawUrl, urlObjectToString } from './normalize';
-import type { PmEvent, PmItem, PmQueryParam, PmRequestObject, PmUrlObject, PmVariable, PmResponse } from './types';
+import { isItemGroup, type PmCollection, type PmEvent, type PmHeader, type PmItem, type PmQueryParam, type PmRequestObject, type PmUrlObject, type PmVariable, type PmResponse } from './types';
 
 export function requestObject(item: PmItem): PmRequestObject {
   return typeof item.request === 'string' ? { method: 'GET', url: item.request, header: [] } : item.request;
@@ -85,4 +86,66 @@ export function exampleFromResponse(item: PmItem, r: { status: number; statusTex
     body: r.bodyText,
     responseTime: Math.round(r.time),
   };
+}
+
+/* ---------- Examples (saved responses in a request's `response[]`) ---------- */
+
+/** Adds an example to the saved request `iid` (not to a draft), keeping the v2.1 shape. */
+export function addExample(collection: PmCollection, iid: string, ex: PmResponse): PmCollection {
+  return updateItem(collection, iid, (it) => (isItemGroup(it) ? it : { ...it, response: [...(it.response ?? []), ex] }));
+}
+
+export function updateExample(collection: PmCollection, iid: string, ex: PmResponse): PmCollection {
+  return updateItem(collection, iid, (it) => (isItemGroup(it) ? it : { ...it, response: (it.response ?? []).map((r) => (r.id === ex.id ? ex : r)) }));
+}
+
+export function removeExample(collection: PmCollection, iid: string, eid: string): PmCollection {
+  return updateItem(collection, iid, (it) => (isItemGroup(it) ? it : { ...it, response: (it.response ?? []).filter((r) => r.id !== eid) }));
+}
+
+/** The example's saved request snapshot as an object (Postman also allows a bare URL string). */
+export function exampleRequest(ex: PmResponse): PmRequestObject {
+  const r = ex.originalRequest;
+  if (!r) return { method: 'GET', header: [], url: { raw: '' } };
+  return typeof r === 'string' ? { method: 'GET', header: [], url: parseRawUrl(r) } : r;
+}
+
+/** Example response headers as key/value rows (v2.1 also allows raw header strings). */
+export function exampleHeaders(ex: PmResponse): PmHeader[] {
+  const h = ex.header;
+  if (!h) return [];
+  const list = typeof h === 'string' ? h.split(/\r?\n/) : h;
+  return list.flatMap((x): PmHeader[] => {
+    if (typeof x !== 'string') return [x];
+    const i = x.indexOf(':');
+    return i > 0 ? [{ key: x.slice(0, i).trim(), value: x.slice(i + 1).trim() }] : [];
+  });
+}
+
+/* ---------- Request drafts ---------- */
+
+/** A request draft never owns `response[]`: examples are saved straight into the collection. */
+export function withoutResponses(item: PmItem): PmItem {
+  if (!('response' in item)) return item;
+  const { response: _r, ...rest } = item;
+  return rest as PmItem;
+}
+
+/** Whether a request draft differs from the saved request (examples ignored). */
+export function requestChanged(draft: PmItem, saved: PmItem): boolean {
+  return JSON.stringify(withoutResponses(draft)) !== JSON.stringify(withoutResponses(saved));
+}
+
+export const UNTITLED_REQUEST = 'Untitled request';
+
+export function newUntitledItem(): PmItem {
+  return { id: uuid(), name: UNTITLED_REQUEST, request: { method: 'GET', header: [], url: { raw: '' } } };
+}
+
+/** A new tab nobody has typed into yet (closing it needs no prompt, and it isn't "unsaved"). */
+export function isPristineNew(item: PmItem): boolean {
+  const req = requestObject(item);
+  const url = urlObject(req);
+  const headers = Array.isArray(req.header) ? req.header : [];
+  return (item.name ?? '') === UNTITLED_REQUEST && (req.method ?? 'GET') === 'GET' && !url.raw && !headers.length && !req.body && !req.auth && !item.event?.length;
 }

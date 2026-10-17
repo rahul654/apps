@@ -11,16 +11,23 @@
  * Keys are [workspace id, item id], so the same collection id can live in two workspaces and one
  * workspace's rows are a single key range ([ws] … [ws, []]).
  *
+ * Version 3 adds the request-tab session, per workspace:
+ *   tabs          keyPath 'ws'          { ws, tabs: TabRef[], activeId }   open tabs + the active one
+ *   drafts        keyPath ['ws','id']   { ws, id: tab id, data, updatedAt } unsaved edits of a tab
+ * The v2 → v3 upgrade only creates the two stores; no existing row is touched. They are not in
+ * WS_STORES: imports (replaceWorkspace) keep the open tabs, deleting a workspace removes them.
+ *
  * Version 1 (single data set) had the same store names keyed by 'id', with globals and the
  * active environment in kv. The upgrade moves everything into the Default workspace inside the
  * versionchange transaction, so it either completes or leaves version 1 untouched.
  */
 import { DEFAULT_WORKSPACE_ID, DEFAULT_WORKSPACE_NAME, EMPTY_GLOBALS, type WorkspaceData, type WorkspaceMeta } from './workspaces';
 import type { PmEnvironmentFile } from './postman/types';
+import type { TabsState } from './tabs';
 
 export const DB_NAME = 'apiclient';
-export const DB_VERSION = 2;
-export const STORES = { workspaces: 'workspaces', collections: 'collections', environments: 'environments', history: 'history', runs: 'runs', kv: 'kv' } as const;
+export const DB_VERSION = 3;
+export const STORES = { workspaces: 'workspaces', collections: 'collections', environments: 'environments', history: 'history', runs: 'runs', kv: 'kv', tabs: 'tabs', drafts: 'drafts' } as const;
 /** Stores whose rows belong to one workspace. */
 export const WS_STORES = [STORES.collections, STORES.environments, STORES.history, STORES.runs] as const;
 export type WsStore = (typeof WS_STORES)[number];
@@ -28,6 +35,10 @@ export type WsStore = (typeof WS_STORES)[number];
 export interface WorkspaceRecord extends WorkspaceMeta {
   globals: PmEnvironmentFile;
   activeEnvironmentId: string | null;
+}
+/** One workspace's open tabs (DB v3). */
+export interface TabsRow extends TabsState {
+  ws: string;
 }
 export interface WsRow<T> {
   ws: string;
@@ -128,6 +139,10 @@ export function openDatabase(idb: IDBFactory = indexedDB, name = DB_NAME): Promi
       } else if (e.oldVersion < 2) {
         migrateV1(db, req.transaction!);
       }
+      if (e.oldVersion < 3) {
+        db.createObjectStore(STORES.tabs, { keyPath: 'ws' });
+        db.createObjectStore(STORES.drafts, { keyPath: ['ws', 'id'] });
+      }
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -199,11 +214,13 @@ export class Store {
     }
     await transactionDone(tx);
   }
-  /** Deletes a workspace record and all of its rows, atomically. */
+  /** Deletes a workspace record, all of its rows, its open tabs and drafts, atomically. */
   async deleteWorkspace(ws: string): Promise<void> {
-    const tx = this.db.transaction([STORES.workspaces, ...WS_STORES], 'readwrite');
+    const tx = this.db.transaction([STORES.workspaces, ...WS_STORES, STORES.tabs, STORES.drafts], 'readwrite');
     tx.objectStore(STORES.workspaces).delete(ws);
     for (const n of WS_STORES) tx.objectStore(n).delete(wsRange(ws));
+    tx.objectStore(STORES.tabs).delete(ws);
+    tx.objectStore(STORES.drafts).delete(wsRange(ws));
     await transactionDone(tx);
   }
   async kvGet<T>(key: string): Promise<T | undefined> {

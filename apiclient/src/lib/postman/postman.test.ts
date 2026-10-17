@@ -5,6 +5,7 @@ import v20 from './__fixtures__/v20.postman_collection.json';
 import envFixture from './__fixtures__/env.postman_environment.json';
 import globalsFixture from './__fixtures__/globals.postman_globals.json';
 import { toCollectionFile, toEnvironmentFile } from './export';
+import { addExample, exampleFromResponse, exampleHeaders, exampleRequest, removeExample, updateExample } from './edit';
 import { curlToRequest, openApiToCollection, parseOpenApiText, shellSplit } from './importers';
 import { findItem, insertItem, listRequests, moveItem, removeItem, updateItem } from './items';
 import { detectPostmanJson, normalizeCollection, normalizeEnvironment, parseRawUrl, urlObjectToString } from './normalize';
@@ -226,5 +227,45 @@ describe('schema file provenance', () => {
     const readme = readFileSync(new URL('./__schemas__/README.md', import.meta.url), 'utf8');
     expect(readme).toContain('schema.postman.com/json/collection/v2.1.0/collection.json');
     expect(readme).toContain('Apache');
+  });
+});
+
+describe('saved examples', () => {
+  const base = () => normalizeCollection(clone(realistic));
+  const response = { status: 201, statusText: 'Created', headers: [{ key: 'Content-Type', value: 'application/json' }], bodyText: '{"id": 12345678901234567890}', contentType: 'application/json', time: 42.4 };
+
+  it('"Save as example" stores the response only in that request’s response[], with originalRequest', () => {
+    const c = base();
+    const login = listRequests(c)[0].item;
+    const ex = exampleFromResponse({ ...login, request: { ...(login.request as object), method: 'PUT' } }, response, 'Created');
+    const next = addExample(c, login.id!, ex);
+    const saved = findItem(next, login.id!)!.item as PmItem;
+    expect(saved.response!.map((r) => r.name)).toEqual([...(login.response ?? []).map((r) => r.name), 'Created']);
+    expect(saved.response!.at(-1)).toMatchObject({ name: 'Created', code: 201, status: 'Created', _postman_previewlanguage: 'json', body: response.bodyText, responseTime: 42, header: [{ key: 'Content-Type', value: 'application/json' }], originalRequest: { method: 'PUT' } });
+    // No other request got it.
+    for (const { item } of listRequests(next)) if (item.id !== login.id) expect(item.response?.some((r) => r.id === ex.id) ?? false).toBe(false);
+    // Rename/edit and delete touch only that example.
+    const renamed = updateExample(next, login.id!, { ...ex, name: 'Created (edited)', code: 200 });
+    expect((findItem(renamed, login.id!)!.item as PmItem).response!.at(-1)).toMatchObject({ name: 'Created (edited)', code: 200 });
+    expect((findItem(removeExample(renamed, login.id!, ex.id!), login.id!)!.item as PmItem).response).toEqual(login.response ?? []);
+  });
+
+  it('export → import keeps examples (schema-valid, deep equal), including originalRequest', () => {
+    const c = base();
+    const login = listRequests(c)[0].item;
+    const withEx = addExample(c, login.id!, exampleFromResponse(login, response, 'Created'));
+    const file = toCollectionFile(withEx);
+    expect(validateCollection(file)).toEqual([]);
+    const back = normalizeCollection(JSON.parse(JSON.stringify(file)));
+    expect(back).toEqual(withEx);
+    const ex = (findItem(back, login.id!)!.item as PmItem).response!.at(-1)!;
+    expect(exampleRequest(ex).method).toBe((login.request as { method: string }).method);
+    expect(exampleHeaders(ex)).toEqual([{ key: 'Content-Type', value: 'application/json' }]);
+  });
+
+  it('reads Postman’s other example shapes: a URL-string originalRequest and raw header strings', () => {
+    const ex = { id: 'e', name: 'x', originalRequest: 'https://api.example.com/a?b=1', header: ['X-A: 1', 'bad', { key: 'X-B', value: '2' }] as never, body: '' };
+    expect(exampleRequest(ex)).toMatchObject({ method: 'GET', url: { raw: 'https://api.example.com/a?b=1' } });
+    expect(exampleHeaders(ex)).toEqual([{ key: 'X-A', value: '1' }, { key: 'X-B', value: '2' }]);
   });
 });

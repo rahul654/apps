@@ -1,9 +1,89 @@
 /** Body, auth and script editors for a request / folder / collection. */
-import { useId, useState } from 'react';
+import { useDeferredValue, useId, useMemo, useState } from 'react';
 import { getFile, setFile } from '../lib/files';
+import { prettifyJsonText, validateJsonText } from '../lib/jsonText';
 import { eventCode, setEventCode } from '../lib/postman/edit';
 import type { PmAuth, PmAuthAttribute, PmAuthType, PmBody, PmEvent, PmFormParam } from '../lib/postman/types';
+import { useAppStore } from '../store/AppStore';
+import { CodeEditor, type CodeLanguage } from './code/CodeEditor';
+import { IconEye, IconEyeOff } from './Icons';
 import { KVEditor, type KVRow } from './ui';
+import { VarInput } from './vars/VarInput';
+
+const RAW_LANGUAGES: { id: string; label: string }[] = [
+  { id: 'json', label: 'JSON' },
+  { id: 'text', label: 'Text' },
+  { id: 'xml', label: 'XML' },
+  { id: 'html', label: 'HTML' },
+  { id: 'javascript', label: 'JavaScript' },
+];
+
+export function codeLanguage(lang: string | undefined): CodeLanguage {
+  return lang === 'json' || lang === 'xml' || lang === 'html' || lang === 'javascript' || lang === 'graphql' ? lang : 'text';
+}
+
+/** Above this size editors drop highlighting, folding and JSON validation (same limit as the response viewer). */
+export const LARGE_TEXT = 1024 * 1024;
+
+export const EDITOR_HINT = 'Tab indents · Esc then Tab leaves the editor · Ctrl+F finds';
+
+/** Height of body editors, from prefs, with a setter that remembers it. */
+export function useEditorHeight(): [number, (h: number) => void] {
+  const { state, dispatch } = useAppStore();
+  return [state.prefs.editorHeight, (h: number) => dispatch({ type: 'prefs/set', prefs: { ...state.prefs, editorHeight: h } })];
+}
+
+/** Raw body: CodeMirror with JSON prettify (keeps `{{placeholders}}`) and inline JSON errors that never block sending. */
+export function RawBodyEditor({ value, language, onChange, onLanguage, ariaLabel = 'Raw body' }: { value: string; language: string; onChange: (v: string) => void; onLanguage?: (lang: string) => void; ariaLabel?: string }) {
+  const [height, setHeight] = useEditorHeight();
+  const deferred = useDeferredValue(value);
+  // Very large bodies: no highlighting, folding or live validation, so typing stays fast.
+  const large = value.length > LARGE_TEXT;
+  const jsonErr = useMemo(() => (language === 'json' && !large ? validateJsonText(deferred) : null), [language, deferred, large]);
+  const [msg, setMsg] = useState<string | null>(null);
+  const prettify = () => {
+    const r = prettifyJsonText(value);
+    if (r.error) setMsg(`Can’t prettify: fix line ${r.error.line} first.`);
+    else {
+      setMsg(null);
+      if (r.text !== value) onChange(r.text);
+    }
+  };
+  return (
+    <div className="stack-sm">
+      <div className="row">
+        {onLanguage && (
+          <label className="row nowrap small">
+            <span className="muted">Format</span>
+            <select className="input compact" value={language} onChange={(e) => onLanguage(e.target.value)} aria-label="Body format">
+              {RAW_LANGUAGES.map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+              {!RAW_LANGUAGES.some((l) => l.id === language) && <option value={language}>{language}</option>}
+            </select>
+          </label>
+        )}
+        {language === 'json' && (
+          <button type="button" className="btn small" onClick={prettify} disabled={!value.trim()} title="Re-indent the JSON; {{variables}} are kept as written">
+            Prettify
+          </button>
+        )}
+        {msg && <span className="tiny warn-text">{msg}</span>}
+        <span className="spacer" />
+        <span className="tiny muted editor-hint">{EDITOR_HINT}</span>
+      </div>
+      <CodeEditor value={value} onChange={(v) => {
+        setMsg(null);
+        onChange(v);
+      }} language={codeLanguage(language)} lintJson={language === 'json' && !large} rich={!large} variables ariaLabel={ariaLabel} placeholder={language === 'json' ? '{\n  "key": "{{value}}"\n}' : ''} height={height} onHeightChange={setHeight} />
+      {jsonErr && (
+        <p className="tiny warn-text json-error" role="status">
+          Invalid JSON on line {jsonErr.line}, column {jsonErr.col}: {jsonErr.message}. It will still be sent as written.
+        </p>
+      )}
+    </div>
+  );
+}
 
 const MODES: { id: PmBody['mode'] | 'none'; label: string }[] = [
   { id: 'none', label: 'None' },
@@ -33,19 +113,12 @@ export function BodyEditor({ body, onChange, itemId }: { body: PmBody | null | u
         ))}
       </div>
       {mode === 'raw' && (
-        <>
-          <label className="field self-start">
-            <span>Format</span>
-            <select className="input compact" value={body?.options?.raw?.language ?? 'text'} onChange={(e) => set({ options: { ...(body?.options ?? {}), raw: { ...(body?.options?.raw ?? {}), language: e.target.value } } })}>
-              <option value="json">JSON</option>
-              <option value="text">Text</option>
-              <option value="xml">XML</option>
-              <option value="html">HTML</option>
-              <option value="javascript">JavaScript</option>
-            </select>
-          </label>
-          <textarea className="input code" value={body?.raw ?? ''} onChange={(e) => set({ raw: e.target.value })} aria-label="Raw body" spellCheck={false} placeholder={body?.options?.raw?.language === 'json' ? '{\n  "key": "{{value}}"\n}' : ''} />
-        </>
+        <RawBodyEditor
+          value={body?.raw ?? ''}
+          language={body?.options?.raw?.language ?? 'text'}
+          onChange={(raw) => set({ raw })}
+          onLanguage={(language) => set({ options: { ...(body?.options ?? {}), raw: { ...(body?.options?.raw ?? {}), language } } })}
+        />
       )}
       {mode === 'urlencoded' && (
         <KVEditor label="URL-encoded fields" rows={(body?.urlencoded ?? []).map((p) => ({ key: p.key, value: p.value ?? '', disabled: p.disabled, description: typeof p.description === 'string' ? p.description : undefined }))} onChange={(rows) => set({ urlencoded: rows.map((r) => ({ key: r.key, value: r.value, type: 'text', ...(r.disabled ? { disabled: true } : {}), ...(r.description ? { description: r.description } : {}) })) })} />
@@ -72,19 +145,39 @@ export function BodyEditor({ body, onChange, itemId }: { body: PmBody | null | u
           <span className="small muted">{getFile(itemId, 'file')?.name ?? (body?.file?.src ? `${body.file.src} (pick again after reload)` : 'No file selected')}</span>
         </div>
       )}
-      {mode === 'graphql' && (
-        <div className="script-grid">
-          <label className="field">
-            <span>Query</span>
-            <textarea className="input code" value={body?.graphql?.query ?? ''} onChange={(e) => set({ graphql: { ...(body?.graphql ?? {}), query: e.target.value } })} spellCheck={false} />
-          </label>
-          <label className="field">
-            <span>Variables (JSON)</span>
-            <textarea className="input code" value={body?.graphql?.variables ?? ''} onChange={(e) => set({ graphql: { ...(body?.graphql ?? {}), variables: e.target.value } })} spellCheck={false} />
-          </label>
-        </div>
-      )}
+      {mode === 'graphql' && <GraphQLEditor value={body?.graphql ?? {}} onChange={(graphql) => set({ graphql })} />}
       {mode === 'none' && <p className="small muted">This request has no body.</p>}
+    </div>
+  );
+}
+
+function GraphQLEditor({ value, onChange }: { value: NonNullable<PmBody['graphql']>; onChange: (g: NonNullable<PmBody['graphql']>) => void }) {
+  const [height, setHeight] = useEditorHeight();
+  const vars = value.variables ?? '';
+  const deferred = useDeferredValue(vars);
+  const err = useMemo(() => validateJsonText(deferred), [deferred]);
+  return (
+    <div className="stack-sm">
+      <span className="tiny muted editor-hint">{EDITOR_HINT}</span>
+      <div className="script-grid">
+        <div className="field">
+          <span>Query</span>
+          <CodeEditor value={value.query ?? ''} onChange={(query) => onChange({ ...value, query })} language="graphql" variables ariaLabel="GraphQL query" height={height} onHeightChange={setHeight} />
+        </div>
+        <div className="field">
+          <span className="row nowrap">
+            Variables (JSON)
+            <button type="button" className="btn ghost small" disabled={!vars.trim()} onClick={() => {
+              const r = prettifyJsonText(vars);
+              if (r.text !== null && r.text !== vars) onChange({ ...value, variables: r.text });
+            }}>
+              Prettify
+            </button>
+          </span>
+          <CodeEditor value={vars} onChange={(variables) => onChange({ ...value, variables })} language="json" lintJson variables ariaLabel="GraphQL variables" height={height} onHeightChange={setHeight} />
+          {err && <p className="tiny warn-text json-error" role="status">Invalid JSON on line {err.line}: {err.message}</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -109,7 +202,7 @@ function FormDataEditor({ rows, onChange, itemId }: { rows: PmFormParam[]; onCha
           {rows.map((r, i) => (
             <tr key={i} className={r.disabled ? 'off' : undefined}>
               <td className="c"><input type="checkbox" checked={!r.disabled} onChange={(e) => update(i, { disabled: !e.target.checked })} aria-label={`Enable ${r.key || 'field ' + (i + 1)}`} /></td>
-              <td><input className="input mono" value={r.key} onChange={(e) => update(i, { key: e.target.value })} aria-label={`Field name ${i + 1}`} /></td>
+              <td><VarInput className="input mono" value={r.key} onChange={(v) => update(i, { key: v })} aria-label={`Field name ${i + 1}`} spellCheck={false} /></td>
               <td>
                 <select className="input compact" value={r.type === 'file' ? 'file' : 'text'} onChange={(e) => update(i, { type: e.target.value as 'text' | 'file' })} aria-label={`Field type ${i + 1}`}>
                   <option value="text">Text</option>
@@ -131,7 +224,7 @@ function FormDataEditor({ rows, onChange, itemId }: { rows: PmFormParam[]; onCha
                     <span className="tiny muted ellipsis">{getFile(itemId, `formdata:${r.key}`)?.name ?? (typeof r.src === 'string' && r.src ? `${r.src} (pick again)` : 'No file')}</span>
                   </span>
                 ) : (
-                  <input className="input mono" value={r.value ?? ''} onChange={(e) => update(i, { value: e.target.value })} aria-label={`Field value ${i + 1}`} />
+                  <VarInput className="input mono" value={r.value ?? ''} onChange={(v) => update(i, { value: v })} aria-label={`Field value ${i + 1}`} spellCheck={false} />
                 )}
               </td>
               <td className="a">
@@ -168,6 +261,28 @@ function withAttr(auth: PmAuth, key: string, value: string): PmAuth {
   return { ...auth, [auth.type]: list };
 }
 
+/** One auth value. Secrets are masked (with a reveal toggle) unless they are a `{{variable}}` reference. */
+function AuthField({ label, value, secret, onChange }: { label: string; value: string; secret: boolean; onChange: (v: string) => void }) {
+  const [reveal, setReveal] = useState(false);
+  const id = useId();
+  const masked = secret && !reveal && !value.includes('{{');
+  return (
+    <div className="field">
+      <label htmlFor={id}>
+        <span className="field-label">{label}</span>
+      </label>
+      <div className="row nowrap">
+        <VarInput id={id} className="input mono" wrapperClassName="grow" type={masked ? 'password' : 'text'} value={value} onChange={onChange} spellCheck={false} autoComplete="off" />
+        {secret && (
+          <button type="button" className="btn ghost small icon" aria-label={reveal ? `Hide ${label}` : `Show ${label}`} aria-pressed={reveal} onClick={() => setReveal((r) => !r)}>
+            {reveal ? <IconEyeOff size={15} /> : <IconEye size={15} />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** `auth === undefined` means inherit; `null`/noauth means none. */
 export function AuthEditor({ auth, onChange, allowInherit = true }: { auth: PmAuth | null | undefined; onChange: (a: PmAuth | null | undefined) => void; allowInherit?: boolean }) {
   const type: PmAuthType | 'inherit' = auth === undefined ? (allowInherit ? 'inherit' : 'noauth') : auth === null ? 'noauth' : auth.type;
@@ -178,12 +293,7 @@ export function AuthEditor({ auth, onChange, allowInherit = true }: { auth: PmAu
     else if (auth && auth.type === t) onChange(auth);
     else onChange({ type: t as PmAuthType, [t]: [] });
   };
-  const field = (key: string, label: string, secret = false) => (
-    <label className="field" key={key}>
-      <span>{label}</span>
-      <input className="input mono" type={secret ? 'password' : 'text'} value={auth ? attr(auth, key) : ''} onChange={(e) => auth && onChange(withAttr(auth, key, e.target.value))} spellCheck={false} />
-    </label>
-  );
+  const field = (key: string, label: string, secret = false) => <AuthField key={key} label={label} secret={secret} value={auth ? attr(auth, key) : ''} onChange={(v) => auth && onChange(withAttr(auth, key, v))} />;
   return (
     <div className="stack-sm">
       <label className="field self-start">

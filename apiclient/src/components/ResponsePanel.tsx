@@ -1,18 +1,75 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ExecResult } from '../lib/execute';
-import { formatBytes, formatMs, prettyJson } from '../lib/format';
+import { formatBytes, formatMs } from '../lib/format';
+import { prettifyJsonText } from '../lib/jsonText';
 import { forbiddenHeaders } from '../lib/request/build';
-import { IconCheck, IconClose, IconWarn } from './Icons';
+import { CodeEditor, type CodeEditorApi, type CodeLanguage } from './code/CodeEditor';
+import { IconCheck, IconClose, IconSearch, IconWarn } from './Icons';
 import { ProxyControl } from './ProxyControl';
-import { CodeView, StatusBadge, Tabs } from './ui';
+import { StatusBadge, Tabs } from './ui';
+
+/** Above this size the response viewer skips pretty printing, highlighting and folding, so it stays responsive. */
+export const LARGE_BODY = 1024 * 1024;
+
+function languageFor(contentType: string, text: string): CodeLanguage {
+  if (/json/i.test(contentType)) return 'json';
+  if (/html/i.test(contentType)) return 'html';
+  if (/xml/i.test(contentType)) return 'xml';
+  if (/javascript/i.test(contentType)) return 'javascript';
+  return /^\s*[[{]/.test(text) ? 'json' : 'text';
+}
+
+/** Read-only CodeMirror view of a body with pretty/raw, wrap, find and fold. */
+export function BodyViewer({ text, contentType = '', binary = false, size, truncated = false, ariaLabel = 'Response body', defaultWrap = true }: { text: string; contentType?: string; binary?: boolean; size?: number; truncated?: boolean; ariaLabel?: string; defaultWrap?: boolean }) {
+  const [pretty, setPretty] = useState(true);
+  const [wrap, setWrap] = useState(defaultWrap);
+  const api = useRef<CodeEditorApi>(null);
+  const large = text.length > LARGE_BODY;
+  const lang = binary ? 'text' : languageFor(contentType, text);
+  // Token-based pretty printing keeps numbers exactly as sent (no big-int rounding).
+  const prettyText = useMemo(() => (binary || large || lang !== 'json' || !text ? null : prettifyJsonText(text).text), [binary, large, lang, text]);
+  const shown = binary ? `[binary content, ${formatBytes(size ?? text.length)}${contentType ? `, ${contentType}` : ''}]` : pretty && prettyText !== null ? prettyText : text;
+  return (
+    <div className="stack-sm">
+      <div className="row">
+        <div className="segmented" role="group" aria-label="Body view">
+          <button type="button" aria-pressed={pretty && prettyText !== null} onClick={() => setPretty(true)} disabled={prettyText === null}>
+            Pretty
+          </button>
+          <button type="button" aria-pressed={!pretty || prettyText === null} onClick={() => setPretty(false)}>
+            Raw
+          </button>
+        </div>
+        <label className="check small">
+          <input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} /> Wrap
+        </label>
+        <button type="button" className="btn ghost small" onClick={() => api.current?.openSearch()} title="Find in body (Ctrl+F inside the body)">
+          <IconSearch size={14} /> Find
+        </button>
+        {!large && !binary && (
+          <>
+            <button type="button" className="btn ghost small" onClick={() => api.current?.foldAll()}>
+              Fold all
+            </button>
+            <button type="button" className="btn ghost small" onClick={() => api.current?.unfoldAll()}>
+              Unfold
+            </button>
+          </>
+        )}
+        {truncated && <span className="pill warn">truncated for display</span>}
+        <span className="tiny muted">{contentType}</span>
+      </div>
+      {large && !binary && <p className="tiny muted note-inline">Large body ({formatBytes(text.length)}): pretty printing, highlighting and folding are off to keep the viewer responsive.</p>}
+      <CodeEditor apiRef={api} value={shown} readOnly language={lang} rich={!large && !binary} wrap={wrap} ariaLabel={ariaLabel} maxHeight="60vh" />
+    </div>
+  );
+}
 
 type Tab = 'body' | 'headers' | 'cookies' | 'tests' | 'console' | 'timing';
 
 export function ResponsePanel({ result, sending, onSaveExample, onCancel }: { result: ExecResult | null; sending: boolean; onSaveExample?: () => void; onCancel?: () => void }) {
   const [tab, setTab] = useState<Tab>('body');
-  const [pretty, setPretty] = useState(true);
-  const [wrap, setWrap] = useState(true);
   if (sending) {
     return (
       <section className="card response" aria-live="polite">
@@ -39,8 +96,6 @@ export function ResponsePanel({ result, sending, onSaveExample, onCancel }: { re
   const { response: r, tests, console: logs, scriptErrors, prepared } = result;
   const failed = tests.filter((t) => !t.passed).length;
   const forbidden = forbiddenHeaders(prepared.headers);
-  const jsonText = r.bodyText && !r.binary ? prettyJson(r.bodyText) : null;
-  const bodyText = r.binary ? `[binary content, ${formatBytes(r.size)}${r.contentType ? `, ${r.contentType}` : ''}]` : pretty && jsonText ? jsonText : r.bodyText;
   return (
     <section className="card response" aria-live="polite" aria-label="Response">
       {r.error && (
@@ -115,26 +170,7 @@ export function ResponsePanel({ result, sending, onSaveExample, onCancel }: { re
         ]}
       />
       <div className="tabpanel" role="tabpanel">
-        {tab === 'body' && (
-          <div className="stack-sm">
-            <div className="row">
-              <div className="segmented" role="group" aria-label="Body view">
-                <button type="button" aria-pressed={pretty} onClick={() => setPretty(true)} disabled={!jsonText}>
-                  Pretty
-                </button>
-                <button type="button" aria-pressed={!pretty} onClick={() => setPretty(false)}>
-                  Raw
-                </button>
-              </div>
-              <label className="check small">
-                <input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} /> Wrap
-              </label>
-              {r.truncated && <span className="pill warn">truncated for display</span>}
-              <span className="tiny muted">{r.contentType}</span>
-            </div>
-            <CodeView text={bodyText} wrap={wrap} searchable ariaLabel="Response body" />
-          </div>
-        )}
+        {tab === 'body' && <BodyViewer text={r.bodyText} contentType={r.contentType} binary={r.binary} size={r.size} truncated={r.truncated} />}
         {tab === 'headers' && (
           <div className="table-wrap">
             <table className="table">

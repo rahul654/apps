@@ -229,6 +229,11 @@ async function main() {
     }
   }
   console.error(`\n${failed.length ? '⚠' : '✔'} ${done} change(s) applied, ${failed.length} failed (${api.calls} API calls).`);
+  if (plan.some((p) => p.actions.some((a) => a.f.kind === 'environment' && a.op === 'update'))) {
+    console.error('\nNote: if an updated variable still looks empty or old in the Postman app (crossed-out cloud icon next to it),');
+    console.error('that computer has a local value that hides the uploaded one. Click the arrow next to the icon and reset the');
+    console.error('local value (use the shared value). The upload itself is correct; the API can\'t change local values.');
+  }
   if (failed.length) {
     for (const f of failed) console.error(`  - ${f}`);
     process.exit(1);

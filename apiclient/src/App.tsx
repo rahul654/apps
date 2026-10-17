@@ -63,6 +63,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<RequestsPage key={ws} />} />
           <Route path="/r/:cid/:iid" element={<RequestsPage key={ws} />} />
+          <Route path="/e/:cid/:iid/:eid" element={<RequestsPage key={ws} />} />
+          <Route path="/new/:tid" element={<RequestsPage key={ws} />} />
           <Route path="/c/:cid" element={<RequestsPage key={ws} />} />
           <Route path="/f/:cid/:fid" element={<RequestsPage key={ws} />} />
           <Route path="/env" element={<EnvironmentsPage key={ws} />} />

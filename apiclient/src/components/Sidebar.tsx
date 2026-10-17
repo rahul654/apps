@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { uuid } from '../lib/id';
 import { insertItem, moveItem, removeItem, updateItem, countRequests, findItem } from '../lib/postman/items';
-import { newRequestItem, requestObject } from '../lib/postman/edit';
+import { newRequestItem, removeExample, requestObject, updateExample } from '../lib/postman/edit';
 import { collectionId, isItemGroup } from '../lib/postman/normalize';
 import { toCollectionFile, collectionFileName } from '../lib/postman/export';
-import type { PmCollection, PmItemGroup, PmItemOrGroup } from '../lib/postman/types';
+import type { PmCollection, PmItem, PmItemGroup, PmItemOrGroup, PmResponse } from '../lib/postman/types';
 import { downloadText } from '../lib/download';
+import { exampleTabId, openTab, requestTabId, tabRoute } from '../lib/tabs';
 import { newCollection, useAppStore } from '../store/AppStore';
-import { IconChevron, IconFolder, IconMenu, IconMore, IconPlus } from './Icons';
+import { IconChevron, IconExample, IconFolder, IconMenu, IconMore, IconPlus } from './Icons';
 import { EnvironmentSelect } from './Layout';
 import { WorkspaceSelect } from './WorkspaceSwitcher';
 import { MethodTag } from './ui';
@@ -88,13 +89,62 @@ function RenameInline({ value, onDone }: { value: string; onDone: (v: string | n
 interface TreeProps {
   collection: PmCollection;
   activeId: string | null;
+  activeExampleId: string | null;
   expanded: Set<string>;
   toggle: (id: string) => void;
   save: (c: PmCollection) => void;
+  /** Double-click: open the tab as a permanent (non-preview) tab. */
+  keepOpen: (tabId: string) => void;
+}
+
+/** A saved example listed under its request. */
+function ExampleNode({ ex, item, depth, ctx }: { ex: PmResponse; item: PmItem; depth: number; ctx: TreeProps }) {
+  const { collection, activeExampleId, save, keepOpen } = ctx;
+  const [renaming, setRenaming] = useState(false);
+  const navigate = useNavigate();
+  const cid = collectionId(collection);
+  const tabId = exampleTabId(cid, item.id!, ex.id!);
+  return (
+    <li>
+      <div className={activeExampleId === ex.id ? 'tree-row example-row active' : 'tree-row example-row'} style={{ paddingLeft: depth * 8 + 22 }}>
+        {renaming ? (
+          <RenameInline
+            value={ex.name ?? ''}
+            onDone={(v) => {
+              setRenaming(false);
+              if (v && v !== ex.name) save(updateExample(collection, item.id!, { ...ex, name: v }));
+            }}
+          />
+        ) : (
+          <Link to={tabRoute(tabId)} className="tree-link" title={`${ex.name} (example${ex.code ? `, ${ex.code}` : ''})`} onDoubleClick={() => keepOpen(tabId)}>
+            <IconExample size={14} className="example-icon" />
+            <span className="tree-name">{ex.name}</span>
+            {ex.code ? <span className="tiny muted">{ex.code}</span> : null}
+          </Link>
+        )}
+        <Menu
+          label={`Actions for example ${ex.name}`}
+          items={[
+            { label: 'Rename', onClick: () => setRenaming(true) },
+            {
+              label: 'Delete',
+              danger: true,
+              sep: true,
+              onClick: () => {
+                if (!window.confirm(`Delete example "${ex.name}"?`)) return;
+                save(removeExample(collection, item.id!, ex.id!));
+                if (activeExampleId === ex.id) navigate(tabRoute(requestTabId(cid, item.id!)));
+              },
+            },
+          ]}
+        />
+      </div>
+    </li>
+  );
 }
 
 function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents: PmItemGroup[]; depth: number; ctx: TreeProps }) {
-  const { collection, activeId, expanded, toggle, save } = ctx;
+  const { collection, activeId, activeExampleId, expanded, toggle, save, keepOpen } = ctx;
   const navigate = useNavigate();
   const [renaming, setRenaming] = useState(false);
   const cid = collectionId(collection);
@@ -136,7 +186,8 @@ function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents:
       const it = newRequestItem();
       save(insertItem(collection, id, it));
       if (!open) toggle(id);
-      navigate(`/r/${cid}/${it.id}`);
+      keepOpen(requestTabId(cid, it.id!));
+      navigate(tabRoute(requestTabId(cid, it.id!)));
     };
     const addFolder = () => {
       const f: PmItemGroup = { id: uuid(), name: 'New folder', item: [] };
@@ -172,30 +223,47 @@ function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents:
     );
   }
   const req = requestObject(node);
+  const examples = node.response ?? [];
+  const open = examples.length > 0 && expanded.has(id);
+  const tabId = requestTabId(cid, id);
   return (
     <li>
-      <div className={activeId === id ? 'tree-row active' : 'tree-row'} style={{ paddingLeft: depth * 8 + 22 }}>
+      <div className={activeId === id && !activeExampleId ? 'tree-row active' : 'tree-row'} style={{ paddingLeft: depth * 8 + (examples.length ? 0 : 22) }}>
+        {examples.length > 0 && (
+          <button type="button" className="tree-toggle" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} ${examples.length} example${examples.length === 1 ? '' : 's'} of ${node.name}`} onClick={() => toggle(id)}>
+            <IconChevron size={14} />
+          </button>
+        )}
         {renaming ? (
           <RenameInline value={node.name ?? ''} onDone={rename} />
         ) : (
-          <Link to={`/r/${cid}/${id}`} className="tree-link" title={node.name}>
+          <Link to={tabRoute(tabId)} className="tree-link" title={`${node.name}${examples.length ? ` · ${examples.length} example${examples.length === 1 ? '' : 's'}` : ''}`} onDoubleClick={() => keepOpen(tabId)}>
             <MethodTag method={req.method ?? 'GET'} />
             <span className="tree-name">{node.name}</span>
           </Link>
         )}
         <Menu label={`Actions for request ${node.name}`} items={common} />
       </div>
+      {open && (
+        <ul aria-label={`Examples of ${node.name}`}>
+          {examples.map((ex) => (
+            <ExampleNode key={ex.id} ex={ex} item={node} depth={depth} ctx={ctx} />
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
 
-export function Sidebar({ activeId, activeCollectionId }: { activeId: string | null; activeCollectionId: string | null }) {
-  const { state, dispatch } = useAppStore();
+export function Sidebar({ activeId, activeCollectionId, activeExampleId = null }: { activeId: string | null; activeCollectionId: string | null; activeExampleId?: string | null }) {
+  const { state, dispatch, setTabs } = useAppStore();
+  const keepOpen = (tabId: string) => setTabs((t) => openTab(t, tabId));
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [collapsed, setCollapsed] = useState(false);
   const [creating, setCreating] = useState(false);
   const [renamingCol, setRenamingCol] = useState<string | null>(null);
+  const exampleCount = useRef<{ id: string | null; n: number }>({ id: null, n: 0 });
   const toggle = (id: string) =>
     setExpanded((s) => {
       const n = new Set(s);
@@ -211,11 +279,16 @@ export function Sidebar({ activeId, activeCollectionId }: { activeId: string | n
     const loc = findItem(c, activeId);
     const ids = [activeCollectionId, ...(loc?.parents.map((p) => p.id!) ?? [])];
     if (loc && isItemGroup(loc.item)) ids.push(activeId);
+    // An open example shows under its expanded request; so does a newly saved one.
+    const count = loc && !isItemGroup(loc.item) ? ((loc.item as PmItem).response?.length ?? 0) : 0;
+    const prev = exampleCount.current;
+    exampleCount.current = { id: activeId, n: count };
+    if (activeExampleId || (prev.id === activeId && count > prev.n)) ids.push(activeId);
     setExpanded((s) => {
       if (ids.every((i) => s.has(i))) return s;
       return new Set([...s, ...ids]);
     });
-  }, [activeId, activeCollectionId, state.collections]);
+  }, [activeId, activeCollectionId, activeExampleId, state.collections]);
 
   const save = (c: PmCollection) => dispatch({ type: 'collection/put', collection: c });
   const create = (name: string | null) => {
@@ -257,7 +330,8 @@ export function Sidebar({ activeId, activeCollectionId }: { activeId: string | n
             const it = newRequestItem();
             save(insertItem(c, null, it));
             if (!open) toggle(cid);
-            navigate(`/r/${cid}/${it.id}`);
+            keepOpen(requestTabId(cid, it.id!));
+            navigate(tabRoute(requestTabId(cid, it.id!)));
           };
           const addFolder = () => {
             const f: PmItemGroup = { id: uuid(), name: 'New folder', item: [] };
@@ -265,7 +339,7 @@ export function Sidebar({ activeId, activeCollectionId }: { activeId: string | n
             if (!open) toggle(cid);
             navigate(`/f/${cid}/${f.id}`);
           };
-          const ctx: TreeProps = { collection: c, activeId, expanded, toggle, save };
+          const ctx: TreeProps = { collection: c, activeId, activeExampleId, expanded, toggle, save, keepOpen };
           return (
             <li key={cid}>
               <div className={activeCollectionId === cid && !activeId ? 'tree-row collection-row active' : 'tree-row collection-row'}>

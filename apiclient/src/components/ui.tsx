@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
 import { sparklinePath } from '../lib/latency/stats';
 import { IconClose, IconPlus } from './Icons';
+import { VarInput } from './vars/VarInput';
 
 /** Accessible tab strip; `tabs` ids must be stable. */
 export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: ReactNode }[]; value: T; onChange: (t: T) => void; label: string }) {
@@ -55,10 +56,10 @@ export function KVEditor({ rows, onChange, keyLabel = 'Key', valueLabel = 'Value
                 <input type="checkbox" checked={!r.disabled} onChange={(e) => update(i, { disabled: !e.target.checked })} aria-label={`Enable ${r.key || 'row ' + (i + 1)}`} />
               </td>
               <td>
-                <input className="input mono" value={r.key} onChange={(e) => update(i, { key: e.target.value })} aria-label={`${keyLabel} ${i + 1}`} placeholder={keyLabel.toLowerCase()} spellCheck={false} />
+                <VarInput className="input mono" value={r.key} onChange={(v) => update(i, { key: v })} aria-label={`${keyLabel} ${i + 1}`} placeholder={keyLabel.toLowerCase()} spellCheck={false} />
               </td>
               <td>
-                <input className="input mono" type={secret ? 'password' : 'text'} value={r.value} onChange={(e) => update(i, { value: e.target.value })} aria-label={`${valueLabel} ${i + 1}`} placeholder={valueLabel.toLowerCase()} spellCheck={false} />
+                <VarInput className="input mono" type={secret ? 'password' : 'text'} value={r.value} onChange={(v) => update(i, { value: v })} aria-label={`${valueLabel} ${i + 1}`} placeholder={valueLabel.toLowerCase()} spellCheck={false} />
               </td>
               {withDescription && (
                 <td>
@@ -86,60 +87,6 @@ export function Sparkline({ values, width = 120, height = 28, label }: { values:
     <svg className="spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? `Trend of ${values.length} values`}>
       <path d={sparklinePath(values, width, height)} fill="none" stroke="currentColor" strokeWidth={1.5} />
     </svg>
-  );
-}
-
-/** Code viewer with optional find (highlights matches, Enter cycles). */
-export function CodeView({ text, wrap = true, searchable = false, ariaLabel }: { text: string; wrap?: boolean; searchable?: boolean; ariaLabel: string }) {
-  const [q, setQ] = useState('');
-  const [cur, setCur] = useState(0);
-  const ref = useRef<HTMLPreElement>(null);
-  const matches: number[] = [];
-  if (q) {
-    const lower = text.toLowerCase();
-    const needle = q.toLowerCase();
-    let i = lower.indexOf(needle);
-    while (i >= 0 && matches.length < 2000) {
-      matches.push(i);
-      i = lower.indexOf(needle, i + needle.length);
-    }
-  }
-  useEffect(() => {
-    setCur(0);
-  }, [q, text]);
-  useEffect(() => {
-    ref.current?.querySelector('mark.current')?.scrollIntoView({ block: 'nearest' });
-  }, [cur, q]);
-  let body: ReactNode = text;
-  if (matches.length) {
-    const parts: ReactNode[] = [];
-    let last = 0;
-    matches.forEach((m, i) => {
-      parts.push(text.slice(last, m));
-      parts.push(
-        <mark key={i} className={i === cur % matches.length ? 'current' : undefined}>
-          {text.slice(m, m + q.length)}
-        </mark>,
-      );
-      last = m + q.length;
-    });
-    parts.push(text.slice(last));
-    body = parts;
-  }
-  return (
-    <div className="response-body stack-sm">
-      {searchable && (
-        <div className="row">
-          <input className="input compact" placeholder="Find in body…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find in body" onKeyDown={(e) => {
-            if (e.key === 'Enter' && matches.length) setCur((c) => c + (e.shiftKey ? matches.length - 1 : 1));
-          }} />
-          {q && <span className="tiny muted">{matches.length ? `${(cur % matches.length) + 1} / ${matches.length}` : 'No matches'}</span>}
-        </div>
-      )}
-      <pre ref={ref} className={wrap ? 'codeview' : 'codeview nowrap'} aria-label={ariaLabel} tabIndex={0}>
-        {body}
-      </pre>
-    </div>
   );
 }
 

@@ -20,7 +20,11 @@ function Command({ text }: { text: string }) {
 export default function PostmanPage() {
   const [os, setOs] = useState<CommandOs>(guessOs);
   const [outFile, setOutFile] = useState(() => downloadsPath(`postman-export-${today()}.zip`, guessOs()));
-  const [input, setInput] = useState(() => downloadsPath(`apiclient-all-workspaces-${today()}.zip`, guessOs()));
+  // The import file starts as the export's "Save as" path and follows it until edited, so
+  // "export, then import that zip" needs no typing.
+  const [inputText, setInputText] = useState<string | null>(null);
+  const input = inputText ?? outFile;
+  const setInput = (v: string) => setInputText(v);
   const [perWorkspace, setPerWorkspace] = useState(true);
   const [workspace, setWorkspace] = useState('Team Workspace');
   const [dryRun, setDryRun] = useState(false);
@@ -30,7 +34,7 @@ export default function PostmanPage() {
   const switchOs = (next: CommandOs) => {
     const swap = (p: string) => (p.startsWith('~/Downloads/') || p.startsWith('~\\Downloads\\') ? downloadsPath(p.slice('~/Downloads/'.length), next) : p);
     setOutFile(swap);
-    setInput(swap);
+    setInputText((v) => (v === null ? null : swap(v)));
     setOs(next);
   };
 
@@ -38,7 +42,7 @@ export default function PostmanPage() {
   const importCmd = importCommand({
     os,
     scriptUrl: appFileUrl('import-to-postman.mjs'),
-    input: input.trim() || downloadsPath('apiclient-all-workspaces.zip', os),
+    input: input.trim() || outFile.trim() || downloadsPath('postman-export.zip', os),
     workspace: perWorkspace ? null : workspace.trim() || 'Team Workspace',
     dryRun,
     skipExisting,
@@ -107,7 +111,7 @@ export default function PostmanPage() {
             doesn’t. First export from <Link to="/data">Data</Link> → <strong>Export all workspaces</strong> (or one workspace).
           </p>
           <label className="field">
-            <span>Zip, unzipped folder, or a single Postman file</span>
+            <span>Zip, unzipped folder, or a single Postman file (starts as the export file above)</span>
             <input className="input mono" value={input} onChange={(e) => setInput(e.target.value)} spellCheck={false} />
           </label>
           <fieldset className="fieldset">

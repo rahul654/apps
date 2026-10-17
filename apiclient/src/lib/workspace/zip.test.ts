@@ -5,6 +5,9 @@ import envFixture from '../postman/__fixtures__/env.postman_environment.json';
 import globalsFixture from '../postman/__fixtures__/globals.postman_globals.json';
 import { normalizeCollection, normalizeEnvironment } from '../postman/normalize';
 import { toCollectionFile } from '../postman/export';
+import { addExample, exampleFromResponse } from '../postman/edit';
+import { findItem, listRequests } from '../postman/items';
+import type { PmItem } from '../postman/types';
 import { validateCollection, validateEnvironment } from '../postman/validate';
 import type { HistoryEntry } from '../../types';
 import { DEFAULT_WORKSPACE_ID, emptyWorkspaceData, type WorkspaceData, type WorkspaceMeta } from '../workspaces';
@@ -160,6 +163,21 @@ describe('single-workspace zip', () => {
     expect(op.data.history).toEqual(history);
     expect(op.data.runs).toEqual(runs);
     expect(op.data.activeEnvironmentId).toBe(envFixture.id);
+  });
+
+  it('keeps saved examples (response[] with originalRequest) through a zip round trip', () => {
+    const c = data.collections[0];
+    const first = listRequests(c)[0].item;
+    const withEx = addExample(c, first.id!, exampleFromResponse(first, { status: 200, statusText: 'OK', headers: [{ key: 'X', value: '1' }], bodyText: '{"ok":true}', contentType: 'application/json', time: 3 }, 'OK example'));
+    const d2 = { ...data, collections: [withEx] };
+    const files2 = unzipSync(buildWorkspaceZip({ meta: meta('ws-b', 'Team B'), data: d2 }));
+    expectPostmanFolder(files2, '');
+    const parsed = parseImportZip(buildWorkspaceZip({ meta: meta('ws-b', 'Team B'), data: d2 }), 'x.zip');
+    const app = { workspaces: [meta(DEFAULT_WORKSPACE_ID, 'Default', true)], data: { [DEFAULT_WORKSPACE_ID]: emptyWorkspaceData() } };
+    const [op] = planImport(app, parsed, { strategy: 'target', mode: 'merge', target: { kind: 'new', name: 'Team B' }, newId: () => 'n', now: 'now' });
+    const back = op.data.collections[0];
+    expect(back).toEqual(withEx);
+    expect((findItem(back, first.id!)!.item as PmItem).response!.at(-1)).toMatchObject({ name: 'OK example', code: 200, originalRequest: { method: (first.request as { method: string }).method } });
   });
 });
 

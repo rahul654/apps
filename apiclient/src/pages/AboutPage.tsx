@@ -7,11 +7,11 @@ export default function AboutPage() {
         <h1>Privacy, limits and compatibility</h1>
         <section className="card">
           <h2>Your data stays in this browser</h2>
-          <p className="small">Workspaces with their collections, environments, globals, history and run reports are stored in IndexedDB on this device under the <code>apiclient</code> database; preferences in localStorage. Nothing is uploaded anywhere; there is no account and no backend. Requests go straight from your browser to the API you call (or to the local proxy on your machine). Clearing site data for this origin deletes everything, so <Link to="/data">export all workspaces</Link> now and then. Files picked for form-data or binary bodies are kept in memory only.</p>
+          <p className="small">Workspaces with their collections, environments, globals, history, run reports, open tabs and unsaved tab edits are stored in IndexedDB on this device under the <code>apiclient</code> database; preferences in localStorage. Nothing is uploaded anywhere; there is no account and no backend. Requests go straight from your browser to the API you call (or to the local proxy on your machine). Clearing site data for this origin deletes everything, so <Link to="/data">export all workspaces</Link> now and then. Files picked for form-data or binary bodies are kept in memory only.</p>
         </section>
         <section className="card">
           <h2>Workspaces</h2>
-          <p className="small">Each workspace has its own collections, environments, globals, active environment, history and saved runs; every page shows the current one, picked in the top bar. Proxy settings and the theme are shared. <strong>Default</strong> always exists. Unsaved request edits are kept per workspace while you switch (until the tab closes). <Link to="/workspaces">Manage workspaces</Link>.</p>
+          <p className="small">Each workspace has its own collections, environments, globals, active environment, history and saved runs; every page shows the current one, picked in the top bar. Proxy settings and the theme are shared. <strong>Default</strong> always exists. Open request tabs and their unsaved edits are kept per workspace, across switches and reloads; a dot on a tab marks unsaved changes. <Link to="/workspaces">Manage workspaces</Link>.</p>
           <p className="small"><Link to="/data">Export all workspaces</Link> gives one zip: <code>workspaces/&lt;name&gt;/</code> holds only Postman files (collections, environments, <code>globals.postman_globals.json</code>), and <code>_apiclient/&lt;name&gt;/</code> holds history, runs and settings. To move a workspace to Postman, unzip and import <code>workspaces/&lt;name&gt;</code> with <strong>Import → Folders</strong>.</p>
         </section>
         <section className="card">
@@ -48,7 +48,7 @@ export default function AboutPage() {
         </section>
         <section className="card">
           <h2>Keyboard</h2>
-          <p className="small"><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Enter</kbd> sends the open request · <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> saves it · tab strips use <kbd>←</kbd>/<kbd>→</kbd>.</p>
+          <p className="small"><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Enter</kbd> sends the open request · <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> saves the active tab (both work inside the code editors) · tab strips use <kbd>←</kbd>/<kbd>→</kbd>; on a request tab <kbd>Delete</kbd> closes it and <kbd>Shift</kbd>+<kbd>F10</kbd> opens its menu · in a code editor <kbd>Tab</kbd> indents, <kbd>Esc</kbd> then <kbd>Tab</kbd> moves focus on, <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>F</kbd> searches · with the caret inside a <code>{'{{variable}}'}</code>, <kbd>↓</kbd> (<kbd>Alt</kbd>+<kbd>↓</kbd> in a code editor) moves into its popover.</p>
         </section>
       </div>
     </div>
