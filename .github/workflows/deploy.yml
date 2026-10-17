@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: Rebuild and test every app, ignoring the build cache
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -22,8 +27,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build all apps into _site/
+          # Reuse downloaded npm packages between runs, so apps that do change install faster.
+          cache: npm
+          cache-dependency-path: '*/package-lock.json'
+      # Finished builds of each app, keyed inside by a fingerprint of the app's files
+      # (scripts/build-site.mjs). Unchanged apps are copied from here instead of being
+      # installed, tested and built again. A new cache is saved after every successful run;
+      # restore-keys picks up the most recent one.
+      - uses: actions/cache@v4
+        with:
+          path: .build-cache
+          key: app-builds-${{ runner.os }}-${{ github.sha }}
+          restore-keys: app-builds-${{ runner.os }}-
+      - name: Build changed apps and assemble _site/
         run: node scripts/build-site.mjs
+        env:
+          FORCE_REBUILD: ${{ inputs.rebuild_all && '1' || '' }}
+      # GitHub Pages always replaces the whole site, so the artifact holds every app.
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

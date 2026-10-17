@@ -14,9 +14,9 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── 404.html                   ← GitHub Pages not-found page
 ├── package.json               ← root scripts only: build / preview
 ├── scripts/
-│   ├── build-site.mjs         ← discovers apps, installs, tests, builds, assembles _site/
+│   ├── build-site.mjs         ← discovers apps, installs/tests/builds only changed ones, assembles _site/
 │   └── preview.mjs            ← serves _site/ under /apps/ to mirror Pages locally
-├── .github/workflows/deploy.yml  ← on push to main: build-site → deploy to Pages
+├── .github/workflows/deploy.yml  ← on push to main: build-site (with .build-cache restored) → deploy to Pages
 ├── README.md                  ← how to run + host on GitHub Pages
 ├── splitwise/                 ← expense splitting (Vite + React 19 + TypeScript)
 ├── devtools/                  ← developer utilities, one route per tool
@@ -29,7 +29,9 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 └── apiclient/                 ← Postman-style API client, Postman v2.1 model in IndexedDB
 ```
 
-`_site/`, `dist/` and `node_modules/` are build output and are git-ignored.
+`_site/`, `dist/`, `node_modules/` and `.build-cache/` are build output and are git-ignored.
+
+**Incremental builds:** `build-site.mjs` fingerprints each app (sha256 of every file `git ls-files --cached --others --exclude-standard` lists in its folder, plus the Node major version and the script's own hash) and keeps the finished `dist/` in `.build-cache/<app>/<fingerprint>/`. A matching fingerprint means the cached copy goes into `_site/` and the app is **not installed, tested or built**. Otherwise it is built normally and cached (written to a temp dir, then renamed). Older entries are pruned, so there's one build per app. CI restores and saves `.build-cache` with `actions/cache` (key per commit, `restore-keys` prefix) and caches npm downloads via `setup-node`. `--no-cache` or `FORCE_REBUILD=1` rebuilds everything; the workflow's manual run has a "rebuild_all" box for it. Anything outside an app folder that affects its build must be part of the fingerprint; editing `build-site.mjs` already invalidates every app. Pages always gets the whole `_site/`.
 
 ## Rules every app must follow
 
@@ -44,7 +46,7 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 
 | Where | Command | Purpose |
 | --- | --- | --- |
-| root | `npm run build` | Build all apps into `_site/` |
+| root | `npm run build` | Build changed apps into `_site/` (`node scripts/build-site.mjs --no-cache` rebuilds all) |
 | root | `npm run preview` | Serve `_site/` at http://localhost:4173/apps/ |
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |

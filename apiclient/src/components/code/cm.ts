@@ -19,7 +19,7 @@ import { xml } from '@codemirror/lang-xml';
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { tags as t } from '@lezer/highlight';
-import { bracketPairs, type BracketPair } from '../../lib/brackets';
+import { bracketPairs, newlineIndex, type BracketPair } from '../../lib/brackets';
 import { validateJsonText } from '../../lib/jsonText';
 import type { VarStatus } from '../../lib/varScope';
 
@@ -170,12 +170,13 @@ interface Pairs {
 function computePairs(text: string): Pairs {
   if (text.length > PAIR_LIMIT) return { folds: [], partner: new Map() };
   const all = bracketPairs(text, { singleLine: true });
+  const spansLines = newlineIndex(text);
   const partner = new Map<number, number>();
   const folds: BracketPair[] = [];
   for (const p of all) {
     partner.set(p.open, p.close);
     partner.set(p.close, p.open);
-    if (text.lastIndexOf('\n', p.close) > p.open) folds.push(p);
+    if (spansLines(p.open, p.close)) folds.push(p);
   }
   return { folds, partner };
 }

@@ -82,3 +82,29 @@ describe('prettifyJsonText', () => {
     expect(prettifyJsonText('"x"').text).toBe('"x"');
   });
 });
+
+describe('prettifyJsonText on large responses', () => {
+  // A minified ~1.2 MB search response, the shape that froze the page before (quadratic trimming).
+  const big = JSON.stringify({
+    status: 'success',
+    data: Array.from({ length: 500 }, (_, i) => ({
+      id: 100000 + i,
+      name: `City tour ${i}`,
+      description: '<p>' + 'Explore the old town and enjoy local food. '.repeat(20) + '</p>',
+      images: Array.from({ length: 8 }, (_, k) => ({ url: `https://cdn.example.com/${i}/${k}.jpg` })),
+      price: { amount: 1234.5 + i, currency: 'INR', empty: {}, none: [] },
+    })),
+  });
+
+  it('formats in linear time', () => {
+    const started = performance.now();
+    const r = prettifyJsonText(big);
+    const ms = performance.now() - started;
+    expect(r.error).toBeNull();
+    expect(ms).toBeLessThan(3000); // was minutes (quadratic); now tens of milliseconds
+  });
+
+  it('matches JSON.stringify(…, null, 2) exactly on plain JSON', () => {
+    expect(prettifyJsonText(big).text).toBe(JSON.stringify(JSON.parse(big), null, 2));
+  });
+});

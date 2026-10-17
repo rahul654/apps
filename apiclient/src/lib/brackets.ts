@@ -10,9 +10,30 @@ export interface BracketPair {
   close: number;
 }
 
+/**
+ * Returns a function telling whether there's a line break strictly between two offsets.
+ * Newlines are indexed once and looked up by binary search; calling `lastIndexOf('\n', …)` per
+ * bracket was quadratic on long single-line text (minified responses) and froze the page.
+ */
+export function newlineIndex(text: string): (from: number, to: number) => boolean {
+  const nl: number[] = [];
+  for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) nl.push(i);
+  return (from, to) => {
+    let lo = 0;
+    let hi = nl.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (nl[mid] <= from) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < nl.length && nl[lo] < to;
+  };
+}
+
 /** Bracket pairs, sorted by the opening offset. Only multi-line pairs unless `singleLine` is set. */
 export function bracketPairs(text: string, opts: { comments?: boolean; singleLine?: boolean } = {}): BracketPair[] {
   const comments = opts.comments ?? true;
+  const spansLines = opts.singleLine ? null : newlineIndex(text);
   const pairs: BracketPair[] = [];
   const stack: { ch: string; at: number }[] = [];
   const n = text.length;
@@ -54,7 +75,7 @@ export function bracketPairs(text: string, opts: { comments?: boolean; singleLin
       if (k < 0) continue;
       const o = stack[k];
       stack.length = k;
-      if (opts.singleLine || text.lastIndexOf('\n', i) > o.at) pairs.push({ open: o.at, close: i });
+      if (!spansLines || spansLines(o.at, i)) pairs.push({ open: o.at, close: i });
     }
   }
   return pairs.sort((a, b) => a.open - b.open);

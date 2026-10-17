@@ -8,3 +8,4 @@ _site/
 *.log
 logs/
 .playwright-mcp/
+.build-cache/

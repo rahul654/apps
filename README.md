@@ -31,9 +31,17 @@ npm test             # unit tests for the split/balance maths
 
 # Build the whole site exactly as GitHub Pages will serve it
 cd ..
-npm run build        # builds every app into _site/
+npm run build        # builds changed apps into _site/ (unchanged ones come from .build-cache/)
 npm run preview      # http://localhost:4173/apps/  and  /apps/splitwise/
+node scripts/build-site.mjs --no-cache   # rebuild and test every app
 ```
+
+**Only changed apps are rebuilt.** Each app gets a fingerprint of its files. When it matches the
+last build, that build is reused and the app isn't installed, tested or built again. The same
+happens on GitHub Actions, where the builds are kept in the Actions cache. Every deploy still
+uploads the whole site, because GitHub Pages replaces the site as a whole. To rebuild everything
+on GitHub: **Actions → Deploy to GitHub Pages → Run workflow** and tick *Rebuild and test every
+app*. The run page shows which apps were built and which were reused.
 
 Requires Node 20.11 or newer.
 

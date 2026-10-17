@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bracketPairs } from './brackets';
+import { bracketPairs, newlineIndex } from './brackets';
 
 describe('bracketPairs', () => {
   it('pairs multi-line brackets and skips placeholders, strings and comments', () => {
@@ -22,5 +22,24 @@ describe('bracketPairs', () => {
   it('ignores single-line pairs and tolerates stray closers', () => {
     expect(bracketPairs('{"a": [1, 2]}')).toEqual([]);
     expect(bracketPairs('] {\n}')).toEqual([{ open: 2, close: 4 }]);
+  });
+});
+
+describe('bracketPairs on long single-line text', () => {
+  it('stays linear on minified JSON (no per-bracket newline scan)', () => {
+    const minified = JSON.stringify(Array.from({ length: 20000 }, (_, i) => ({ id: i, tags: ['a', 'b'], nested: { x: [i] } })));
+    const started = performance.now();
+    const pairs = bracketPairs(minified);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(pairs).toEqual([]); // nothing spans lines, so nothing folds
+    expect(bracketPairs(minified, { singleLine: true }).length).toBe(1 + 20000 * 4);
+  });
+
+  it('newlineIndex answers "is there a line break between"', () => {
+    const has = newlineIndex('ab\ncd\n');
+    expect(has(0, 2)).toBe(false);
+    expect(has(0, 3)).toBe(true);
+    expect(has(2, 5)).toBe(false); // the break at 2 is not strictly inside
+    expect(has(3, 6)).toBe(true);
   });
 });

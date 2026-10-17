@@ -207,13 +207,16 @@ export function prettifyJsonText(text: string, indent = 2): { text: string; erro
   const { tokens } = tokenizeJson(text);
   if (!tokens.length) return { text, error: null };
   const pad = (depth: number) => ' '.repeat(depth * indent);
-  let out = '';
+  // Output as a list of small pieces. Trimming touches only the tail, so formatting stays linear;
+  // trimming one big string with an end-anchored regex at every newline was quadratic and froze
+  // the page on large responses.
+  const out = new TailBuffer();
   let depth = 0;
   // Whether the next token starts a fresh line (after an opening bracket, a comma or a line comment).
   let atLineStart = true;
   const newline = () => {
-    out = out.replace(/[ \t]+$/, '');
-    out += '\n' + pad(depth);
+    out.trimEnd(' \t');
+    out.push('\n' + pad(depth));
     atLineStart = true;
   };
   const nextSignificant = (from: number) => {
@@ -225,14 +228,15 @@ export function prettifyJsonText(text: string, indent = 2): { text: string; erro
     switch (t.type) {
       case '{':
       case '[': {
-        out += t.text;
+        out.push(t.text);
         const next = nextSignificant(k + 1);
         const close = t.type === '{' ? '}' : ']';
         const hasCommentInside = tokens[k + 1]?.type === 'comment';
         if (next?.type === close && !hasCommentInside) {
           // Empty container stays on one line.
-          const ci = tokens.indexOf(next, k + 1);
-          out += next.text;
+          let ci = k + 1;
+          while (tokens[ci] !== next) ci++;
+          out.push(next.text);
           k = ci;
           atLineStart = false;
           break;
@@ -245,16 +249,19 @@ export function prettifyJsonText(text: string, indent = 2): { text: string; erro
       case ']':
         depth = Math.max(0, depth - 1);
         newline();
-        out += t.text;
+        out.push(t.text);
         atLineStart = false;
         break;
-      case ',':
-        out = out.replace(/[ \t\n]+$/, (m) => (m.includes('\n') ? m : ''));
-        out += ',';
+      case ',': {
+        // Drop spaces before the comma, but keep a line break a comment left there.
+        const ws = out.trimEnd(' \t\n');
+        if (ws.includes('\n')) out.push(ws);
+        out.push(',');
         newline();
         break;
+      }
       case ':':
-        out += ': ';
+        out.push(': ');
         atLineStart = false;
         break;
       case 'comment': {
@@ -262,24 +269,66 @@ export function prettifyJsonText(text: string, indent = 2): { text: string; erro
         const prev = tokens[k - 1];
         // A comment that sat on the same line as the previous token stays trailing it.
         if (prev && atLineStart && !text.slice(prev.to, t.from).includes('\n')) {
-          out = out.replace(/\n[ \t]*$/, '');
+          const ws = out.trimEnd(' \t');
+          if (out.lastChar() === '\n') out.trimEnd('\n', 1);
+          else out.push(ws);
           atLineStart = false;
         }
-        if (!atLineStart && !out.endsWith(' ')) out += ' ';
-        out += t.text;
+        if (!atLineStart && out.lastChar() !== ' ') out.push(' ');
+        out.push(t.text);
         if (line) newline();
         else {
-          out += ' ';
+          out.push(' ');
           atLineStart = false;
         }
         break;
       }
       default:
-        out += t.text;
+        out.push(t.text);
         atLineStart = false;
     }
   }
-  return { text: out.replace(/[ \t]+$/gm, '').replace(/\n+$/, ''), error: null };
+  const lines = out.toString().split('\n');
+  for (let j = 0; j < lines.length; j++) {
+    const l = lines[j];
+    let e = l.length;
+    while (e > 0 && (l[e - 1] === ' ' || l[e - 1] === '\t')) e--;
+    if (e < l.length) lines[j] = l.slice(0, e);
+  }
+  while (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+  return { text: lines.join('\n'), error: null };
+}
+
+/** A string built from pieces, with cheap edits at the end. */
+class TailBuffer {
+  private parts: string[] = [];
+  push(s: string): void {
+    if (s) this.parts.push(s);
+  }
+  lastChar(): string {
+    const last = this.parts[this.parts.length - 1];
+    return last ? last[last.length - 1] : '';
+  }
+  /** Removes trailing characters found in `chars` (at most `max` of them) and returns what was removed. */
+  trimEnd(chars: string, max = Infinity): string {
+    let removed = '';
+    while (this.parts.length && removed.length < max) {
+      const i = this.parts.length - 1;
+      const last = this.parts[i];
+      let j = last.length;
+      while (j > 0 && removed.length + (last.length - j) < max && chars.includes(last[j - 1])) j--;
+      removed = last.slice(j) + removed;
+      if (j > 0) {
+        this.parts[i] = last.slice(0, j);
+        break;
+      }
+      this.parts.pop();
+    }
+    return removed;
+  }
+  toString(): string {
+    return this.parts.join('');
+  }
 }
 
 /** Compact form of the same token stream (comments kept on their own). Handy for tests and size checks. */
