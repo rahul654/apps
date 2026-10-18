@@ -13,6 +13,7 @@ import {
   IconRecord,
   IconScreen,
   IconScreenCam,
+  IconScreenshot,
   IconStop,
   IconTrash,
   IconWave,
@@ -33,7 +34,8 @@ import { needsCamera, needsScreen } from '../media/controller';
 import { isFakeMode } from '../media/fake';
 import { canRecordScreen, canUseDevices, hasMediaRecorder, isFirefox, isMac, isSafari, isTypeSupported } from '../media/features';
 import { PIP_NOTE } from '../media/pip';
-import { useController, useRecorder } from '../store/RecorderContext';
+import { useController, useRecorder, useTakeScreenshot } from '../store/RecorderContext';
+import { cancelScreenshot, captureNow, dismissLastShot, useShot } from '../store/screenshot';
 
 const MODES: Array<{ id: RecordMode; label: string; icon: ReactNode; screen: boolean }> = [
   { id: 'screen-camera', label: 'Screen + camera', icon: <IconScreenCam />, screen: true },
@@ -122,7 +124,10 @@ export function RecordPage() {
   const micOn = !!s.mic.stream;
   const deviceLocked = busy;
 
-  const announcement = phaseAnnouncement(rec);
+  const shot = useShot();
+  const takeShot = useTakeScreenshot();
+  const recordingScreen = active && !!s.screen;
+  const announcement = shot.phase === 'countdown' ? `Screenshot in ${shot.secondsLeft}` : phaseAnnouncement(rec);
 
   return (
     <div className="stack">
@@ -217,6 +222,15 @@ export function RecordPage() {
                 <span className="countdown-hint">Click or press Space to start now · Esc to cancel</span>
               </button>
             )}
+            {shot.phase === 'countdown' && (
+              <button type="button" className="countdown shot-countdown" onClick={() => captureNow()} aria-label={`Screenshot in ${shot.secondsLeft}. Click to take it now.`}>
+                <span className="countdown-num" aria-hidden="true">
+                  {shot.secondsLeft}
+                </span>
+                <span className="countdown-hint">Screenshot in {shot.secondsLeft} s · Click or press Space to take it now · Esc to cancel</span>
+              </button>
+            )}
+            {shot.phase === 'picking' && <div className="stage-overlay">Pick what to capture…</div>}
             {phase === 'preparing' && <div className="stage-overlay">Waiting for permission…</div>}
             {phase === 'saving' && <div className="stage-overlay">Saving…</div>}
             {phase === 'paused' && <div className="stage-overlay paused-overlay">Paused</div>}
@@ -232,6 +246,42 @@ export function RecordPage() {
               <button type="button" className="btn" onClick={() => c.cancel()}>
                 Cancel
               </button>
+            )}
+            {(!busy || recordingScreen) && screenOk && (
+              <div className="row nowrap shot-controls">
+                {shot.phase === 'countdown' ? (
+                  <button type="button" className="btn" onClick={() => cancelScreenshot()}>
+                    Cancel screenshot
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={takeShot}
+                    disabled={shot.phase !== 'idle'}
+                    aria-keyshortcuts="Alt+Shift+S"
+                    title={recordingScreen ? 'Grab a frame of the screen you are recording' : 'Pick a screen, window or tab, then highlight and mark it up'}
+                  >
+                    <IconScreenshot /> {shot.phase === 'idle' ? 'Screenshot' : 'Taking screenshot…'}
+                  </button>
+                )}
+                <label className="sr-only" htmlFor="shot-delay">
+                  Screenshot delay
+                </label>
+                <select
+                  id="shot-delay"
+                  className="input delay-select"
+                  value={prefs.shotDelay}
+                  disabled={shot.phase !== 'idle'}
+                  onChange={(e) => set({ shotDelay: Number(e.target.value) as Prefs['shotDelay'] })}
+                  title="Delay before the screenshot, so you can open a menu or switch windows"
+                >
+                  <option value={0}>No delay</option>
+                  <option value={3}>3 s delay</option>
+                  <option value={5}>5 s delay</option>
+                  <option value={10}>10 s delay</option>
+                </select>
+              </div>
             )}
             {active && (
               <>
@@ -301,6 +351,11 @@ export function RecordPage() {
               {rec.stopReason === 'share-ended' && <> · stopped because screen sharing ended</>}
               {rec.stopReason === 'max-duration' && <> · stopped at the maximum length</>}
               {rec.stopReason === 'device-lost' && <> · stopped because the camera disconnected</>}
+            </Notice>
+          )}
+          {shot.last && active && (
+            <Notice kind="success" onDismiss={() => dismissLastShot()} actions={<Link className="btn small" to={`/shot/${shot.last.id}`}>Open</Link>}>
+              <strong>Screenshot saved</strong> · “{shot.last.title}” is in the library. Recording continues.
             </Notice>
           )}
           {phase === 'error' && rec.error && (

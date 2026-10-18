@@ -4,6 +4,7 @@ import { applyTheme, getTheme, type ThemeChoice } from '../lib/prefs';
 import { isFakeMode } from '../media/fake';
 import { useController, useRecorder } from '../store/RecorderContext';
 import { IconLibrary, IconLock, IconMoon, IconRecord, IconScreen, IconSun } from './Icons';
+import { ShotStatus } from './ShotStatus';
 
 const NEXT: Record<ThemeChoice, ThemeChoice> = { system: 'light', light: 'dark', dark: 'system' };
 const LABEL: Record<ThemeChoice, string> = { system: 'System theme', light: 'Light theme', dark: 'Dark theme' };
@@ -62,7 +63,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </NavLink>
         </nav>
         <span className="spacer" />
-        <span className="privacy-note" title="Recordings are stored in this browser only. Nothing is uploaded.">
+        <span className="privacy-note" title="Recordings and screenshots are stored in this browser only. Nothing is uploaded.">
           <IconLock size={14} /> <span className="privacy-text">Stays on your device</span>
         </span>
         <button type="button" className="btn ghost icon" onClick={cycle} aria-label={`${LABEL[theme]} (click to change)`} title={`${LABEL[theme]}: click to change`}>
@@ -70,9 +71,12 @@ export function Layout({ children }: { children: ReactNode }) {
         </button>
       </header>
       <main id="main" tabIndex={-1} className="main">
+        <div className="shot-status">
+          <ShotStatus />
+        </div>
         {children}
       </main>
-      <footer className="footer">Recorded and stored locally in your browser · No uploads, no tracking</footer>
+      <footer className="footer">Recorded, captured and stored locally in your browser · No uploads, no tracking</footer>
     </>
   );
 }

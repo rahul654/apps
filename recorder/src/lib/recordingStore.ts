@@ -6,11 +6,14 @@
  * the last second. The playable file is `new Blob(chunks)`. Browsers back IDB Blobs with
  * disk, so assembling it doesn't load the recording into memory.
  *
- * Stores (DB "recorder", v1):
+ * Stores (DB "recorder", v2):
  *   recordings  key: id                 → RecordingMeta
  *   chunks      key: [recId, seq]       → { recId, seq, data: Blob, atMs }
- *   thumbs      key: id                 → { id, data: Blob }
+ *   thumbs      key: id                 → { id, data: Blob }  (recordings and screenshots)
+ *   shots       key: id                 → ScreenshotMeta       (v2, see screenshotStore.ts)
+ *   shotImages  key: id                 → { id, data: Blob }   (v2, the original capture)
  */
+import { done, req } from './idb';
 
 export type RecordMode = 'screen-camera' | 'screen' | 'camera' | 'audio';
 
@@ -42,31 +45,26 @@ interface ChunkRow {
 }
 
 const DB_NAME = 'recorder';
-const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
-function req<T>(r: IDBRequest<T>): Promise<T> {
+/**
+ * Opens (and upgrades) the database. Each step only adds stores, so it runs inside the
+ * versionchange transaction and existing data is left alone. v1 → v2 adds the screenshot stores.
+ */
+export function openRecorderDb(factory: IDBFactory = indexedDB, name = DB_NAME, version = DB_VERSION): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-  });
-}
-
-function done(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'));
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-export function openRecorderDb(factory: IDBFactory = indexedDB, name = DB_NAME): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const r = factory.open(name, DB_VERSION);
-    r.onupgradeneeded = () => {
+    const r = factory.open(name, version);
+    r.onupgradeneeded = (e) => {
       const db = r.result;
-      if (!db.objectStoreNames.contains('recordings')) db.createObjectStore('recordings', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('chunks')) db.createObjectStore('chunks', { keyPath: ['recId', 'seq'] });
-      if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs', { keyPath: 'id' });
+      if (e.oldVersion < 1) {
+        if (!db.objectStoreNames.contains('recordings')) db.createObjectStore('recordings', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('chunks')) db.createObjectStore('chunks', { keyPath: ['recId', 'seq'] });
+        if (!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs', { keyPath: 'id' });
+      }
+      if (e.oldVersion < 2 && version >= 2) {
+        if (!db.objectStoreNames.contains('shots')) db.createObjectStore('shots', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('shotImages')) db.createObjectStore('shotImages', { keyPath: 'id' });
+      }
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -284,9 +282,16 @@ export async function recoverRecording(
   return store.update(id, { status: 'complete', durationMs, title: meta.title.endsWith('(recovered)') ? meta.title : `${meta.title} (recovered)` });
 }
 
+let sharedDb: Promise<IDBDatabase> | null = null;
+/** The app-wide connection to the real IndexedDB (shared by recordings and screenshots). */
+export function recorderDb(): Promise<IDBDatabase> {
+  if (!sharedDb) sharedDb = openRecorderDb();
+  return sharedDb;
+}
+
 let shared: RecordingStore | null = null;
 /** App-wide store on the real IndexedDB. */
 export function recordingStore(): RecordingStore {
-  if (!shared) shared = new RecordingStore(openRecorderDb());
+  if (!shared) shared = new RecordingStore(recorderDb());
   return shared;
 }

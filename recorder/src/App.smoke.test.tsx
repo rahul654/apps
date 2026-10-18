@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { recordingStore } from './lib/recordingStore';
+import { screenshotStore } from './lib/screenshotStore';
 import { RecorderProvider } from './store/RecorderContext';
 
 const denied = () => Promise.reject(Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' }));
@@ -50,6 +51,16 @@ beforeAll(() => {
   };
   URL.createObjectURL = () => 'blob:fake';
   URL.revokeObjectURL = () => {};
+  // jsdom has no canvas: a 2D context whose methods do nothing, and a fake bitmap decoder.
+  const ctx = new Proxy({} as Record<string | symbol, unknown>, {
+    get: (t, k) => (k in t ? t[k] : k === 'measureText' ? () => ({ width: 10 }) : () => {}),
+    set: (t, k, v) => ((t[k] = v), true),
+  });
+  HTMLCanvasElement.prototype.getContext = (() => ctx) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.toBlob = function (cb: BlobCallback) {
+    cb(new Blob(['x'], { type: 'image/png' }));
+  };
+  vi.stubGlobal('createImageBitmap', async () => ({ width: 800, height: 450, close() {} }));
 });
 
 afterEach(() => {
@@ -98,6 +109,18 @@ describe('routes render', () => {
       expect(text).toContain(label);
     }
     expect(text).toContain('Alt+Shift+R');
+    expect(text).toContain('Screenshot');
+    expect(text).toContain('Alt+Shift+S');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('a denied screen-share prompt for a screenshot shows the same friendly copy', async () => {
+    const { el, errors, done } = await renderAt('/');
+    const btn = [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Screenshot')!;
+    await act(async () => btn.click());
+    await settle(el, (t) => t.includes('Screen sharing was cancelled'));
+    expect(el.textContent).toContain('Screen sharing was cancelled');
     expect(errors).toEqual([]);
     await done();
   });
@@ -133,6 +156,51 @@ describe('routes render', () => {
     expect(text).toContain('Smoke test clip');
     expect(text).toContain('Trim');
     expect(text).toContain('Real-time re-record');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('library lists screenshots next to recordings and filters by kind', async () => {
+    await screenshotStore().create(
+      { id: 'shot-1', title: 'Smoke screenshot', createdAt: Date.now(), width: 800, height: 450, source: 'display' },
+      new Blob(['png'], { type: 'image/png' }),
+    );
+    const { el, errors, done } = await renderAt('/library', (t) => t.includes('Smoke screenshot') && t.includes('Smoke test clip'));
+    expect(el.textContent).toContain('800×450');
+    const only = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Screenshots')!;
+    await act(async () => only.click());
+    expect(el.textContent).toContain('Smoke screenshot');
+    expect(el.textContent).not.toContain('Smoke test clip');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('screenshot editor renders the tools and adds a highlight', async () => {
+    const { el, errors, done } = await renderAt('/shot/shot-1', (t) => t.includes('Spotlight'));
+    const text = el.textContent ?? '';
+    for (const label of ['Smoke screenshot', 'Highlight', 'Spotlight', 'Box', 'Arrow', 'Pen', 'Text', 'Blur', 'Crop', 'Download']) expect(text).toContain(label);
+    const canvas = el.querySelector('canvas')!;
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 450, right: 800, bottom: 450, x: 0, y: 0, toJSON() {} });
+    canvas.setPointerCapture = () => {};
+    const pe = (type: string, x: number, y: number) => {
+      const e = new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+      Object.defineProperty(e, 'pointerId', { value: 1 });
+      return e;
+    };
+    await act(async () => {
+      canvas.dispatchEvent(pe('pointerdown', 100, 100));
+      canvas.dispatchEvent(pe('pointermove', 300, 160));
+      canvas.dispatchEvent(pe('pointerup', 300, 160));
+    });
+    await settle(el, () => !!canvas.getAttribute('aria-label')?.includes('1 mark'));
+    expect(canvas.getAttribute('aria-label')).toContain('1 mark');
+    // Autosave writes the scene to IndexedDB.
+    for (let i = 0; i < 50 && (await screenshotStore().get('shot-1'))!.scene.annotations.length === 0; i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+    }
+    expect((await screenshotStore().get('shot-1'))!.scene.annotations[0]).toMatchObject({ type: 'highlight', x: 100, y: 100, w: 200, h: 60 });
     expect(errors).toEqual([]);
     await done();
   });

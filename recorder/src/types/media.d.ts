@@ -19,8 +19,15 @@ interface Window {
   documentPictureInPicture?: DocumentPictureInPicture;
 }
 
+/** Capture Handle focus control (Chromium 109+). */
+declare class CaptureController {
+  constructor();
+  setFocusBehavior?(behavior: 'focus-captured-surface' | 'no-focus-change'): void;
+}
+
 /** getDisplayMedia extras (Chromium). */
 interface DisplayMediaStreamOptions {
+  controller?: CaptureController;
   systemAudio?: 'include' | 'exclude';
   selfBrowserSurface?: 'include' | 'exclude';
   surfaceSwitching?: 'include' | 'exclude';

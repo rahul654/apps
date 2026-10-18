@@ -21,7 +21,7 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── splitwise/                 ← expense splitting (Vite + React 19 + TypeScript)
 ├── devtools/                  ← developer utilities, one route per tool
 ├── filetools/                 ← PDF / image / QR tools, all client-side
-├── recorder/                  ← screen + webcam recorder, recordings kept in IndexedDB
+├── recorder/                  ← screen + webcam recorder and annotated screenshots, kept in IndexedDB
 ├── sandbox/                   ← open websites in sandboxed iframes + HTML playground
 ├── bgremover/                 ← background remover, ONNX models in a worker
 ├── transcribe/                ← speech to text, Whisper in a worker
@@ -85,7 +85,7 @@ PDF, image and QR tools; all processing happens in the browser. `src/tools/regis
 
 ## Recorder (`recorder/`)
 
-Loom-style screen + webcam recorder. Recordings live in IndexedDB; nothing is uploaded.
+Loom-style screen + webcam recorder, plus annotated screenshots. Recordings and screenshots live in IndexedDB; nothing is uploaded.
 
 - **Compositing** (`src/media/compositor.ts`, `src/workers/compositor.worker.ts`): screen + camera bubble are drawn into one canvas stream. Fallback chain: `worker-breakout` (Chromium stream processors + OffscreenCanvas in a worker), then `worker-spec`, then `main-canvas` redrawn from a worker timer. Force one with `&compositor=main-canvas`.
   - Never drive drawing from main-thread `requestAnimationFrame`: hidden tabs throttle it to ~1 Hz, which freezes the bubble.
@@ -94,6 +94,10 @@ Loom-style screen + webcam recorder. Recordings live in IndexedDB; nothing is up
 - **Crash safety:** MediaRecorder runs with a 1 s timeslice, and chunks go straight to IndexedDB (`lib/recordingStore.ts`). On load, unfinished sessions are offered for recovery, skipping ones another tab still holds a Web Lock on.
 - **WebM duration:** `lib/webmDuration.ts` patches the duration into the EBML header after recording; without it, players can't seek.
 - **Trim/convert:** `mediabunny` (MPL-2.0: fine to use unmodified; edits to its own files must be published), lazy-loaded in the `editor` chunk. Fast trim copies packets and starts at the previous key frame (Chromium is asked for one every 2 s); frame-accurate trim re-encodes. Don't use ffmpeg.wasm: GitHub Pages can't send the COOP/COEP headers its threaded build needs.
+- **Screenshots** (`media/screenshot.ts`, `store/screenshot.ts`, `#/shot/:id` → `pages/ScreenshotPage.tsx`): a page can't draw over other windows, so it's "freeze, then annotate". The Screenshot button / Alt+Shift+S opens the picker (`CaptureController.setFocusBehavior`: focus stays here without a delay, moves to the shared tab/window with one), grabs one frame and stops sharing. While recording, it grabs from a *clone* of the recorded screen track instead (no prompt, recording untouched). Frames come from `MediaStreamTrackProcessor` (keeps the newest frame; works in hidden tabs, which matters with the 3/5/10 s delay), else a `<video>`. Pasting an image (outside text fields) or "Open image" in the library also opens it in the editor.
+  - **Storage:** DB v2 adds `shots` (meta + scene, validated by `parseShotMeta`/`parseScene` on read) and `shotImages` (the original, never modified); thumbnails share `thumbs`. v1→v2 only adds stores (tested by building a v1 DB). The annotated image is rendered on demand for download/copy/share; editing autosaves only the scene (debounced, flushed on pagehide/hidden/leave).
+  - **Annotations** (`lib/annotations.ts`, pure + tested): everything in source-image pixels; highlight, spotlight, box, arrow, pen, text, blur (pixelate/solid), non-destructive crop; snapshot undo history. `media/annotateRender.ts` `drawScene` is the single renderer for the editor canvas and the export. Blur/solid sample only the image and are drawn under every other mark, so hidden pixels aren't in the export. Text boxes store measured `w`/`h`.
+  - **Editor** (`components/annotate/Annotator.tsx`): one full-resolution canvas scaled by CSS; drags live in a ref and paint on the next frame. Opening the text box calls `preventDefault()` on pointerdown, or the following mousedown moves focus off the textarea and closes it.
 - **Formats:** chosen by `lib/mime.ts` from `MediaRecorder.isTypeSupported`: MP4 H.264/AAC where available (Chrome on Windows/macOS, Safari), else WebM VP9/Opus. MP4 conversion on Linux Chrome falls back to Opus audio, which QuickTime can't play.
 
 ## Sandbox (`sandbox/`)

@@ -1,6 +1,7 @@
 /**
  * Preferences in localStorage (key "recorder:prefs:v1"). Device ids only: media is never stored here.
  */
+import { COLORS, HIGHLIGHT_COLORS, type MarkSize } from './annotations';
 import type { BubbleShape, BubbleSize, ResolutionCap } from './geometry';
 import type { ContainerPref, Quality } from './mime';
 import type { RecordMode } from './recordingStore';
@@ -27,6 +28,13 @@ export interface Prefs {
   countdown: boolean;
   /** 0 = no limit. */
   maxMinutes: number;
+  /** Screenshot delay in seconds. */
+  shotDelay: 0 | 3 | 5 | 10;
+  /** Annotation tools: colour for boxes / arrows / pen / text, highlighter colour, size, blur style. */
+  markColor: string;
+  highlightColor: string;
+  markSize: MarkSize;
+  blurStyle: 'pixelate' | 'solid';
 }
 
 export const PREFS_KEY = 'recorder:prefs:v1';
@@ -51,6 +59,11 @@ export const DEFAULT_PREFS: Prefs = {
   container: 'auto',
   countdown: true,
   maxMinutes: 0,
+  shotDelay: 0,
+  markColor: '#ef4444',
+  highlightColor: '#facc15',
+  markSize: 'm',
+  blurStyle: 'pixelate',
 };
 
 const oneOf = <T extends string | number>(v: unknown, allowed: readonly T[], d: T): T => (allowed.includes(v as T) ? (v as T) : d);
@@ -87,6 +100,11 @@ export function parsePrefs(raw: string | null): Prefs {
     container: oneOf(o.container, ['auto', 'mp4', 'webm'] as const, d.container),
     countdown: bool(o.countdown, d.countdown),
     maxMinutes: Math.round(num(o.maxMinutes, 0, 600, d.maxMinutes)),
+    shotDelay: oneOf(o.shotDelay, [0, 3, 5, 10] as const, d.shotDelay),
+    markColor: oneOf<string>(o.markColor, COLORS, d.markColor),
+    highlightColor: oneOf<string>(o.highlightColor, HIGHLIGHT_COLORS, d.highlightColor),
+    markSize: oneOf(o.markSize, ['s', 'm', 'l'] as const, d.markSize),
+    blurStyle: oneOf(o.blurStyle, ['pixelate', 'solid'] as const, d.blurStyle),
   };
 }
 

@@ -17,4 +17,10 @@ describe('parsePrefs', () => {
     expect(p.cameraId).toBe('abc');
     expect(p.countdown).toBe(true);
   });
+  it('validates screenshot and annotation settings', () => {
+    const ok = parsePrefs(JSON.stringify({ shotDelay: 5, markColor: '#22c55e', highlightColor: '#38bdf8', markSize: 'l', blurStyle: 'solid' }));
+    expect(ok).toMatchObject({ shotDelay: 5, markColor: '#22c55e', highlightColor: '#38bdf8', markSize: 'l', blurStyle: 'solid' });
+    const bad = parsePrefs(JSON.stringify({ shotDelay: 7, markColor: 'red', highlightColor: '#ef4444', markSize: 'xl', blurStyle: 'gaussian' }));
+    expect(bad).toMatchObject({ shotDelay: 0, markColor: DEFAULT_PREFS.markColor, highlightColor: DEFAULT_PREFS.highlightColor, markSize: 'm', blurStyle: 'pixelate' });
+  });
 });

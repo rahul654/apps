@@ -46,8 +46,8 @@ export function formatBytes(bytes: number): string {
 }
 
 /** "Recording 2026-10-13 14:05" in local time. */
-export function defaultTitle(d: Date): string {
-  return `Recording ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+export function defaultTitle(d: Date, prefix = 'Recording'): string {
+  return `${prefix} ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Title → safe download filename with extension. Strips characters Windows/macOS reject. */

@@ -3,7 +3,7 @@
  * where Option+Shift+R types "‰" in `event.key`.
  */
 
-export type ShortcutAction = 'toggle-record' | 'toggle-pause' | 'skip-countdown' | 'cancel-countdown';
+export type ShortcutAction = 'toggle-record' | 'toggle-pause' | 'screenshot' | 'skip-countdown' | 'cancel-countdown';
 
 export interface KeyLike {
   code: string;
@@ -21,13 +21,14 @@ export interface KeyLike {
 export const SHORTCUTS: Array<{ action: ShortcutAction; keys: string; label: string }> = [
   { action: 'toggle-record', keys: 'Alt+Shift+R', label: 'Start / stop recording' },
   { action: 'toggle-pause', keys: 'Alt+Shift+P', label: 'Pause / resume' },
+  { action: 'screenshot', keys: 'Alt+Shift+S', label: 'Take a screenshot' },
   { action: 'skip-countdown', keys: 'Space', label: 'Skip the countdown' },
   { action: 'cancel-countdown', keys: 'Esc', label: 'Cancel the countdown' },
 ];
 
 const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
-/** Maps a key event to an action, given whether a countdown is showing. */
+/** Maps a key event to an action, given whether a countdown (recording or screenshot) is showing. */
 export function matchShortcut(e: KeyLike, ctx: { countdown: boolean }): ShortcutAction | null {
   if (e.repeat) return null;
   const typing = e.targetEditable || (e.targetTag ? TYPING_TAGS.has(e.targetTag.toUpperCase()) : false);
@@ -35,6 +36,7 @@ export function matchShortcut(e: KeyLike, ctx: { countdown: boolean }): Shortcut
     // Alt+Shift combos work even while typing in a field: they don't produce useful text.
     if (e.code === 'KeyR') return 'toggle-record';
     if (e.code === 'KeyP') return 'toggle-pause';
+    if (e.code === 'KeyS') return 'screenshot';
     return null;
   }
   if (ctx.countdown && !e.altKey && !e.ctrlKey && !e.metaKey && !typing) {

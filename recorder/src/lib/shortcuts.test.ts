@@ -5,8 +5,9 @@ const key = (code: string, mods: Partial<KeyLike> = {}): KeyLike => ({ code, alt
 const altShift = { altKey: true, shiftKey: true };
 
 describe('matchShortcut', () => {
-  it('maps Alt+Shift+R / P by physical key', () => {
+  it('maps Alt+Shift+R / P / S by physical key', () => {
     expect(matchShortcut(key('KeyR', altShift), { countdown: false })).toBe('toggle-record');
+    expect(matchShortcut(key('KeyS', { ...altShift, key: 'Í' }), { countdown: false })).toBe('screenshot');
     expect(matchShortcut(key('KeyP', { ...altShift, key: 'Π' }), { countdown: false })).toBe('toggle-pause');
   });
   it('ignores other modifier combos and repeats', () => {

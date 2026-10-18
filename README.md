@@ -8,7 +8,7 @@ A single git repo holding several small web apps, published together on GitHub P
 | https://rahul654.github.io/apps/splitwise/ | Splitwise clone (React + TypeScript, data in localStorage) | [splitwise/](splitwise/) |
 | https://rahul654.github.io/apps/devtools/ | Developer utilities: JSON, Base64, URL, JWT, timestamp, regex, cron, UUID, hash, diff, converters | [devtools/](devtools/) |
 | https://rahul654.github.io/apps/filetools/ | PDF editor and organiser, OCR (image to text, searchable PDFs), image compressor/converter, QR generator/scanner, all processed in the browser | [filetools/](filetools/) |
-| https://rahul654.github.io/apps/recorder/ | Loom-style screen and webcam recorder with a local library, trim and MP4/WebM export | [recorder/](recorder/) |
+| https://rahul654.github.io/apps/recorder/ | Loom-style screen and webcam recorder with a local library, trim and MP4/WebM export, plus screenshots you can highlight, mark up, blur and crop | [recorder/](recorder/) |
 | https://rahul654.github.io/apps/sandbox/ | Open websites in sandboxed iframes (isolation presets, fresh session, device sizes) plus an HTML/JS playground with a console | [sandbox/](sandbox/) |
 | https://rahul654.github.io/apps/bgremover/ | Background remover with on-device AI (U-2-Netp, MODNet, BiRefNet lite): batch queue, colour/blur/image backgrounds, erase/restore brush, PNG/WebP/JPEG and zip export | [bgremover/](bgremover/) |
 | https://rahul654.github.io/apps/transcribe/ | Speech to text with Whisper running in the browser (WebGPU or WASM): upload or record, streaming results, transcript editor synced to playback, TXT/SRT/VTT/JSON export, local library | [transcribe/](transcribe/) |

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { recordingStore, type RecordingMeta } from '../lib/recordingStore';
+import { screenshotStore, type ScreenshotMeta } from '../lib/screenshotStore';
 
 const events = new EventTarget();
 let channel: BroadcastChannel | null = null;
@@ -37,7 +38,31 @@ export function useLibrary(): { items: RecordingMeta[] | null; error: string | n
   return { items, error, reload };
 }
 
-/** Object URL for a recording's thumbnail; revoked on unmount / change. */
+export function useScreenshots(): { items: ScreenshotMeta[] | null; error: string | null } {
+  const [items, setItems] = useState<ScreenshotMeta[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const reload = () =>
+      screenshotStore()
+        .list()
+        .then((list) => {
+          if (!alive) return;
+          setItems(list);
+          setError(null);
+        })
+        .catch((e) => alive && setError((e as Error)?.message ?? String(e)));
+    void reload();
+    events.addEventListener('change', reload);
+    return () => {
+      alive = false;
+      events.removeEventListener('change', reload);
+    };
+  }, []);
+  return { items, error };
+}
+
+/** Object URL for a recording's or screenshot's thumbnail; revoked on unmount / change. */
 export function useThumbnail(id: string, hasThumb: boolean): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
