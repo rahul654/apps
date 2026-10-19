@@ -32,6 +32,28 @@ export function shellSplit(cmd: string): string[] {
   return out;
 }
 
+/** `-F` value `key=@"my file.png";type=image/png` → file part; `key=text` → text part. */
+function parseFormArg(f: string): { key: string; value: string; type: 'text' | 'file'; contentType?: string } {
+  const j = f.indexOf('=');
+  const key = f.slice(0, j);
+  const v = f.slice(j + 1);
+  if (!v.startsWith('@')) return { key, value: v, type: 'text' };
+  let rest = v.slice(1);
+  let name: string;
+  if (rest.startsWith('"')) {
+    let k = 1;
+    name = '';
+    for (; k < rest.length && rest[k] !== '"'; k++) name += rest[k] === '\\' && k + 1 < rest.length ? rest[++k] : rest[k];
+    rest = rest.slice(k + 1);
+  } else {
+    const semi = rest.indexOf(';');
+    name = semi < 0 ? rest : rest.slice(0, semi);
+    rest = semi < 0 ? '' : rest.slice(semi);
+  }
+  const type = /;type=([^;]+)/.exec(rest)?.[1];
+  return { key, value: name, type: 'file', ...(type ? { contentType: type } : {}) };
+}
+
 export function curlToRequest(cmd: string): { name: string; request: PmRequestObject } {
   const args = shellSplit(cmd.trim());
   if (args[0] !== 'curl') throw new Error('Expected a command starting with "curl".');
@@ -39,7 +61,7 @@ export function curlToRequest(cmd: string): { name: string; request: PmRequestOb
   let url = '';
   const header: PmHeader[] = [];
   const data: string[] = [];
-  const form: { key: string; value: string; type: 'text' | 'file' }[] = [];
+  const form: { key: string; value: string; type: 'text' | 'file'; contentType?: string }[] = [];
   let user: string | null = null;
   let binary = false;
   for (let i = 1; i < args.length; i++) {
@@ -54,12 +76,11 @@ export function curlToRequest(cmd: string): { name: string; request: PmRequestOb
     } else if (a === '-d' || a === '--data' || a === '--data-raw' || a === '--data-binary' || a === '--data-ascii' || a === '--data-urlencode') {
       data.push(next());
       if (a === '--data-binary') binary = true;
-    } else if (a === '-F' || a === '--form') {
+    } else if (a === '-F' || a === '--form') form.push(parseFormArg(next()));
+    else if (a === '--form-string') {
       const f = next();
       const j = f.indexOf('=');
-      const key = f.slice(0, j);
-      const v = f.slice(j + 1);
-      form.push(v.startsWith('@') ? { key, value: v.slice(1), type: 'file' } : { key, value: v, type: 'text' });
+      form.push({ key: f.slice(0, j), value: f.slice(j + 1), type: 'text' });
     } else if (a === '-u' || a === '--user') user = next();
     else if (a === '--url') url = next();
     else if (a === '-A' || a === '--user-agent') header.push({ key: 'User-Agent', value: next() });
@@ -74,7 +95,10 @@ export function curlToRequest(cmd: string): { name: string; request: PmRequestOb
   if (!url) throw new Error('No URL found in the curl command.');
   const request: PmRequestObject = { method: method ?? (data.length || form.length ? 'POST' : 'GET'), header, url: parseRawUrl(url) };
   if (form.length) {
-    request.body = { mode: 'formdata', formdata: form.map((f) => (f.type === 'file' ? { key: f.key, type: 'file', src: f.value } : { key: f.key, value: f.value, type: 'text' })) };
+    request.body = { mode: 'formdata', formdata: form.map((f) => (f.type === 'file' ? { key: f.key, type: 'file', src: f.value, ...(f.contentType ? { contentType: f.contentType } : {}) } : { key: f.key, value: f.value, type: 'text' })) };
+  } else if (binary && data.length === 1 && data[0].startsWith('@')) {
+    // --data-binary @file: Postman's binary body (only the file name is known).
+    request.body = { mode: 'file', file: { src: data[0].slice(1) } };
   } else if (data.length) {
     const raw = data.join('&');
     const ct = header.find((h) => h.key.toLowerCase() === 'content-type')?.value ?? '';

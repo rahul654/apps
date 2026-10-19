@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { allowedByDefault, appFileUrl, guessOs, portFromUrl, proxyCommand, stopProxy, waitForProxy } from '../lib/proxy/control';
 import { pingProxy } from '../lib/request/send';
 import { useAppStore } from '../store/AppStore';
-import { IconCheck, IconCopy, IconStop, IconWarn } from './Icons';
+import { IconCheck, IconStop, IconWarn } from './Icons';
+import { CopyButton } from './ui';
 
 type Phase = 'checking' | 'running' | 'stopped' | 'stopping' | 'stop-failed';
 
@@ -13,26 +14,6 @@ const POLL_MS = 2000;
 export function useStartCommand(port: number, os = guessOs()): string {
   const origin = typeof location === 'undefined' ? 'http://localhost' : location.origin;
   return proxyCommand({ os, port, scriptUrl: appFileUrl('apiclient-proxy.mjs'), allow: allowedByDefault(origin) ? undefined : origin });
-}
-
-export function CopyButton({ text, label = 'Copy', className = 'btn small' }: { text: string; label?: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
-  }, [copied]);
-  return (
-    <button
-      type="button"
-      className={className}
-      onClick={() => {
-        void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => setCopied(false));
-      }}
-    >
-      {copied ? <IconCheck size={14} /> : <IconCopy size={14} />} {copied ? 'Copied' : label}
-    </button>
-  );
 }
 
 /**

@@ -128,7 +128,7 @@ describe('app', () => {
     expect(el.querySelector('.tree-row.active')?.textContent).toContain('Login');
     await click(byText(el, '[role=tab]', 'Code'));
     const curl = el.querySelector('.codeview')!.textContent!;
-    expect(curl).toContain("curl -X POST 'https://staging.example.com/login?remember=true'");
+    expect(curl).toContain("curl --location 'https://staging.example.com/login?remember=true'");
     expect(curl).toContain('"password": "s3cret"'); // from the active environment
     await click(byText(el, '[role=tab]', 'Headers'));
     expect(el.querySelectorAll('.kv tbody tr')).toHaveLength(2);
@@ -141,6 +141,30 @@ describe('app', () => {
     await click(byText(el, 'button', 'Save'));
     expect(el.textContent).not.toContain('Unsaved changes');
     expect(el.querySelector('.tree-row.active')?.textContent).toContain('Login renamed');
+    expect(errors).toEqual([]);
+    await done();
+  });
+
+  it('copies the request as cURL from the title row, the Code tab and the sidebar menu (unsaved edits included)', async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => void copied.push(t) } });
+    const { el, errors, done } = await renderAt(`/r/${cid}/${login.id}`);
+    await click(el.querySelector('button[aria-label="Copy request as cURL"]'));
+    await waitFor(() => copied.length === 1);
+    expect(copied[0]).toMatch(/^curl --location 'https:\/\/staging\.example\.com\/login\?remember=true' \\\n/);
+    expect(copied[0]).toContain('"password": "s3cret"');
+    await waitForText(el, 'Copied');
+    await click(byText(el, '[role=tab]', 'Code'));
+    await click(el.querySelector('button[aria-label="Copy cURL command"]'));
+    await waitFor(() => copied.length === 2);
+    expect(copied[1]).toBe(el.querySelector('.codeview')!.textContent);
+    // Sidebar: the open tab's unsaved URL edit is what gets copied.
+    await type(el.querySelector<HTMLInputElement>('.url-input')!, '{{baseUrl}}/login?remember=false');
+    await click(el.querySelector('button[aria-label="Actions for request Login"]'));
+    await click(byText(el, '[role=menuitem]', 'Copy as cURL'));
+    await waitFor(() => copied.length === 3);
+    expect(copied[2]).toContain("'https://staging.example.com/login?remember=false'");
+    await waitForText(el, 'cURL copied');
     expect(errors).toEqual([]);
     await done();
   });

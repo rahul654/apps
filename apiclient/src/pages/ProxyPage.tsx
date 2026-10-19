@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { IconWarn } from '../components/Icons';
-import { CopyButton, ProxyControl, useStartCommand } from '../components/ProxyControl';
+import { ProxyControl, useStartCommand } from '../components/ProxyControl';
+import { CopyButton } from '../components/ui';
 import { allowedByDefault, appBaseUrl, appFileUrl, guessOs, openStartLink, parsePort, portFromUrl, proxyUrlForPort, type CommandOs } from '../lib/proxy/control';
 import { useAppStore } from '../store/AppStore';
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CopyButton } from '../components/ProxyControl';
+import { CopyButton } from '../components/ui';
 import { downloadsPath, exportCommand, importCommand } from '../lib/postman/commands';
 import { appFileUrl, guessOs, type CommandOs } from '../lib/proxy/control';
 

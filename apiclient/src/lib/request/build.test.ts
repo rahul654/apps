@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { PmCollection, PmItem, PmItemGroup } from '../postman/types';
-import { applyAuth, buildRequest, effectiveAuth, encodeQueryPart, forbiddenHeaders } from './build';
+import { applyAuth, buildRequest, effectiveAuth, encodeQueryPart, forbiddenHeaders, type PreparedRequest } from './build';
+import { curlToRequest } from '../postman/importers';
+import { copiedMessage, previewRequest } from './preview';
 import { toCurl, toFetch } from './snippets';
 
 const scopes = { environment: { baseUrl: 'https://api.example.com', token: 'T0K', id: '7' }, globals: { q: 'g v' } };
@@ -83,13 +85,100 @@ describe('buildRequest', () => {
 
 describe('snippets', () => {
   const req = buildRequest(item({ method: 'POST', url: "https://e.com/it's", header: [{ key: 'X-A', value: '1' }], body: { mode: 'raw', raw: '{"a":1}', options: { raw: { language: 'json' } } } }), { scopes });
-  it('curl', () => {
-    expect(toCurl(req)).toBe(`curl -X POST 'https://e.com/it'\\''s' \\\n  -H 'X-A: 1' \\\n  -H 'Content-Type: application/json' \\\n  --data-raw '{"a":1}'`);
+  const prepared = (over: Partial<PreparedRequest>): PreparedRequest => ({ method: 'GET', url: 'https://e.com/', headers: [], body: { kind: 'none' }, missing: [], warnings: [], ...over });
+
+  it('curl: Postman-style, shell-quoted, method implied by the data', () => {
+    expect(toCurl(req)).toBe(`curl --location 'https://e.com/it'\\''s' \\\n  --header 'X-A: 1' \\\n  --header 'Content-Type: application/json' \\\n  --data-raw '{"a":1}'`);
   });
+
+  it('curl: --request only when curl would pick another method', () => {
+    expect(toCurl(prepared({}))).toBe(`curl --location 'https://e.com/'`);
+    expect(toCurl(prepared({ method: 'DELETE' }))).toBe(`curl --location --request DELETE 'https://e.com/'`);
+    expect(toCurl(prepared({ method: 'POST' }))).toBe(`curl --location --request POST 'https://e.com/'`);
+    expect(toCurl(prepared({ method: 'PUT', body: { kind: 'text', text: 'x', contentType: null } }))).toContain(`--request PUT 'https://e.com/'`);
+    expect(toCurl(prepared({ method: 'GET', body: { kind: 'text', text: 'x', contentType: null } }))).toContain('--request GET');
+    expect(toCurl(prepared({ method: 'HEAD' }))).toBe(`curl --location --head 'https://e.com/'`);
+  });
+
+  it('curl: --globoff for brackets and braces in the URL', () => {
+    expect(toCurl(prepared({ url: 'https://e.com/?filter[name]=a' }))).toBe(`curl --location --globoff 'https://e.com/?filter[name]=a'`);
+  });
+
+  it('curl: form fields, files and binary bodies', () => {
+    const form = toCurl(
+      prepared({
+        method: 'POST',
+        body: {
+          kind: 'form',
+          parts: [
+            { key: 'name', value: "O'Neil" },
+            { key: 'handle', value: '@me' },
+            { key: 'avatar', file: new Blob(['x']), fileName: 'my "pic".png', contentType: 'image/png' },
+          ],
+        },
+      }),
+    );
+    expect(form).toBe(
+      `curl --location 'https://e.com/' \\\n  --form 'name=O'\\''Neil' \\\n  --form-string 'handle=@me' \\\n  --form 'avatar=@"my \\"pic\\".png";type=image/png'`,
+    );
+    expect(toCurl(prepared({ method: 'PUT', body: { kind: 'bytes', bytes: new Uint8Array(0), contentType: null, fileName: 'a.bin' } }))).toBe(
+      `curl --location --request PUT 'https://e.com/' \\\n  --data-binary '@a.bin'`,
+    );
+  });
+
   it('fetch', () => {
     const s = toFetch(req);
     expect(s).toContain('const res = await fetch("https://e.com/it\'s", {');
     expect(s).toContain('"X-A": "1"');
     expect(s).toContain('body: "{\\"a\\":1}"');
+  });
+});
+
+describe('previewRequest', () => {
+  const collection: PmCollection = {
+    info: { name: 'c', schema: '' },
+    item: [],
+    variable: [{ key: 'baseUrl', value: 'https://col.example.com' }, { key: 'who', value: 'collection' }],
+    auth: { type: 'bearer', bearer: [{ key: 'token', value: '{{token}}' }] },
+  };
+  const env = { id: 'e', name: 'Dev', values: [{ key: 'token', value: 'ENV-TOKEN', enabled: true }, { key: 'who', value: 'env', enabled: true }] };
+  const globals = { id: 'globals', name: 'Globals', values: [] };
+
+  it('resolves variables with the active environment and applies inherited auth', () => {
+    const r = previewRequest({ collection, parents: [], item: item({ method: 'GET', url: '{{baseUrl}}/me?who={{who}}' }), environment: env, globals });
+    expect(r.url).toBe('https://col.example.com/me?who=env');
+    expect(r.headers).toEqual([{ key: 'Authorization', value: 'Bearer ENV-TOKEN' }]);
+    expect(toCurl(r)).toBe(`curl --location 'https://col.example.com/me?who=env' \\\n  --header 'Authorization: Bearer ENV-TOKEN'`);
+  });
+
+  it('reports unresolved variables and warnings in the copied message', () => {
+    const r = previewRequest({ collection, parents: [], item: item({ method: 'GET', url: '{{baseUrl}}/{{missing}}' }), environment: null, globals });
+    expect(r.missing).toContain('missing');
+    expect(copiedMessage('cURL', r)).toMatch(/^cURL copied · unresolved: .*\{\{missing\}\}/);
+    const ok = previewRequest({ collection: { ...collection, auth: undefined }, parents: [], item: item({ method: 'GET', url: 'https://e.com' }), environment: null, globals });
+    expect(copiedMessage('cURL', ok)).toBe('cURL copied');
+  });
+});
+
+describe('cURL round trip (copy → import)', () => {
+  const back = (r: PreparedRequest) => curlToRequest(toCurl(r)).request;
+
+  it('keeps method, URL, headers and a JSON body', () => {
+    const r = buildRequest(item({ method: 'PATCH', url: "https://e.com/it's?filter[a]=1", header: [{ key: 'X-Q', value: `it's "q" $HOME` }], body: { mode: 'raw', raw: '{\n  "a": "O\'Neil"\n}', options: { raw: { language: 'json' } } } }), { scopes });
+    const req = back(r);
+    expect(req.method).toBe('PATCH');
+    // The URL exactly as the app sends it (query brackets percent-encoded).
+    expect(req.url).toMatchObject({ raw: "https://e.com/it's?filter%5Ba%5D=1" });
+    expect(req.header).toEqual([{ key: 'X-Q', value: `it's "q" $HOME` }, { key: 'Content-Type', value: 'application/json' }]);
+    expect(req.body).toEqual({ mode: 'raw', raw: '{\n  "a": "O\'Neil"\n}', options: { raw: { language: 'json' } } });
+  });
+
+  it('keeps form fields (incl. @-values and quoted file names) and binary files', () => {
+    const form = back({ method: 'POST', url: 'https://e.com/', headers: [], body: { kind: 'form', parts: [{ key: 'h', value: '@me' }, { key: 'f', file: new Blob(['x']), fileName: 'my "pic".png', contentType: 'image/png' }] }, missing: [], warnings: [] });
+    expect(form.method).toBe('POST');
+    expect(form.body).toEqual({ mode: 'formdata', formdata: [{ key: 'h', value: '@me', type: 'text' }, { key: 'f', type: 'file', src: 'my "pic".png', contentType: 'image/png' }] });
+    const bin = back({ method: 'PUT', url: 'https://e.com/', headers: [], body: { kind: 'bytes', bytes: new Uint8Array(0), contentType: null, fileName: 'a.bin' }, missing: [], warnings: [] });
+    expect(bin).toMatchObject({ method: 'PUT', body: { mode: 'file', file: { src: 'a.bin' } } });
+    expect(back({ method: 'HEAD', url: 'https://e.com/', headers: [], body: { kind: 'none' }, missing: [], warnings: [] }).method).toBe('HEAD');
   });
 });

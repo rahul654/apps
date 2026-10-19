@@ -4,13 +4,11 @@ import { executeItem, mergeCollectionVariables, mergeValues } from '../lib/execu
 import { getFile } from '../lib/files';
 import { addExample, exampleFromResponse, isPristineNew, removeExample, requestChanged, requestObject, setPathVariables, setQuery, setRawUrl, urlObject, withoutResponses } from '../lib/postman/edit';
 import { collectionId } from '../lib/postman/normalize';
-import { scopedVariables } from '../lib/postman/items';
 import type { PmCollection, PmHeader, PmItem, PmItemGroup } from '../lib/postman/types';
-import { buildRequest } from '../lib/request/build';
+import { copiedMessage, previewRequest } from '../lib/request/preview';
 import { toCurl, toFetch } from '../lib/request/snippets';
 import { scriptHost } from '../lib/scripts/host';
 import { exampleTabId, openTab, tabRoute } from '../lib/tabs';
-import { varsFromList } from '../lib/variables';
 import { useAppStore } from '../store/AppStore';
 import { runtimeKey, updateRuntime, useTabRuntime } from '../store/tabRuntime';
 import { HTTP_METHODS } from '../types';
@@ -19,7 +17,7 @@ import { IconExample, IconSave, IconSend, IconTrash } from './Icons';
 import { ResponsePanel } from './ResponsePanel';
 import { SaveRequestDialog } from './tabs/SaveRequestDialog';
 import { useTabActions } from './tabs/useTabActions';
-import { KVEditor, Tabs, useToast } from './ui';
+import { CopyButton, KVEditor, Tabs, useToast } from './ui';
 import { VariablesProvider, withRequestVariable } from './vars/VariablesProvider';
 import { VarInput } from './vars/VarInput';
 
@@ -58,10 +56,6 @@ export function RequestEditor({ tabId, collection, parents, item, isNew = false 
   const setReq = (patch: Partial<typeof req>) => setDraftItem({ ...draft, request: { ...req, ...patch } });
 
   const env = state.environments.find((e) => e.id === state.activeEnvironmentId) ?? null;
-  const scopes = useMemo(
-    () => ({ environment: env ? varsFromList(env.values) : {}, collectionChain: scopedVariables(collection, parents, draft).map(varsFromList), globals: varsFromList(state.globals.values) }),
-    [env, collection, parents, draft, state.globals],
-  );
 
   const save = useCallback(() => {
     if (isNew) {
@@ -110,7 +104,14 @@ export function RequestEditor({ tabId, collection, parents, item, isNew = false 
     return () => document.removeEventListener('keydown', onKey);
   }, [send, save]);
 
-  const preview = useMemo(() => buildRequest(draft, { scopes, parents, collection, files: getFile }), [draft, scopes, parents, collection]);
+  const preview = useMemo(
+    () => previewRequest({ collection, parents, item: draft, environment: env, globals: state.globals, files: getFile }),
+    [collection, parents, draft, env, state.globals],
+  );
+  // The button already says "Copied"; the toast only appears when the command needs attention.
+  const onCurlCopied = () => {
+    if (preview.missing.length || preview.warnings.length) showToast(copiedMessage('cURL', preview));
+  };
   const headers: PmHeader[] = Array.isArray(req.header) ? req.header : [];
   const query = (url.query ?? []).map((q) => ({ key: q.key ?? '', value: q.value ?? '', disabled: q.disabled, description: typeof q.description === 'string' ? q.description : undefined }));
   const pathVars = (url.variable ?? []).map((v) => ({ key: v.key ?? '', value: v.value === undefined || v.value === null ? '' : String(v.value), disabled: v.disabled, description: typeof v.description === 'string' ? v.description : undefined }));
@@ -154,6 +155,7 @@ export function RequestEditor({ tabId, collection, parents, item, isNew = false 
         <div className="title-row">
           <input className="input title-input" value={draft.name ?? ''} onChange={(e) => setDraftItem({ ...draft, name: e.target.value })} aria-label="Request name" />
           {dirty && <span className="unsaved">Unsaved changes</span>}
+          <CopyButton text={() => toCurl(preview)} label="Copy cURL" className="btn small" onCopied={onCurlCopied} ariaLabel="Copy request as cURL" />
           <button type="button" className="btn small" onClick={save} disabled={!dirty && !isNew}>
             <IconSave size={15} /> {isNew ? 'Save…' : 'Save'}
           </button>
@@ -250,11 +252,20 @@ export function RequestEditor({ tabId, collection, parents, item, isNew = false 
           )}
           {tab === 'code' && (
             <div className="stack-sm">
-              <h3>curl</h3>
+              <div className="row between">
+                <h3>cURL</h3>
+                <CopyButton text={() => toCurl(preview)} onCopied={onCurlCopied} ariaLabel="Copy cURL command" />
+              </div>
               <pre className="codeview">{toCurl(preview)}</pre>
-              <h3>fetch</h3>
+              <div className="row between">
+                <h3>fetch</h3>
+                <CopyButton text={() => toFetch(preview)} ariaLabel="Copy fetch snippet" />
+              </div>
               <pre className="codeview">{toFetch(preview)}</pre>
-              <p className="tiny muted">Generated from the resolved request (variables substituted with the active environment).</p>
+              <p className="tiny muted">
+                Generated from the resolved request: variables substituted with the active environment, inherited auth applied, pre-request scripts not run. The cURL
+                command is for bash, zsh, Git Bash and WSL.
+              </p>
             </div>
           )}
         </div>

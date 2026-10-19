@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from 'react';
+import { copyText } from '../lib/clipboard';
 import { sparklinePath } from '../lib/latency/stats';
-import { IconClose, IconPlus } from './Icons';
+import { IconCheck, IconClose, IconCopy, IconPlus } from './Icons';
 import { VarInput } from './vars/VarInput';
 
 /** Accessible tab strip; `tabs` ids must be stable. */
@@ -140,5 +141,37 @@ export function MethodTag({ method }: { method: string }) {
     <span className="method" data-m={m}>
       {m.length > 6 ? m.slice(0, 5) + '…' : m}
     </span>
+  );
+}
+
+/** Copies `text` (or the result of `text()`, computed at click time) and shows "Copied" briefly. */
+export function CopyButton({ text, label = 'Copy', className = 'btn small', onCopied, ariaLabel }: { text: string | (() => string); label?: string; className?: string; onCopied?: () => void; ariaLabel?: string }) {
+  const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!copied && !failed) return;
+    const t = setTimeout(() => {
+      setCopied(false);
+      setFailed(false);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [copied, failed]);
+  return (
+    <button
+      type="button"
+      className={className}
+      aria-label={ariaLabel}
+      onClick={() => {
+        copyText(typeof text === 'function' ? text() : text).then(
+          () => {
+            setCopied(true);
+            onCopied?.();
+          },
+          () => setFailed(true),
+        );
+      }}
+    >
+      {copied ? <IconCheck size={14} /> : <IconCopy size={14} />} {copied ? 'Copied' : failed ? 'Copy failed' : label}
+    </button>
   );
 }

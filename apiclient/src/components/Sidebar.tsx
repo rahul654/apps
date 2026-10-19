@@ -6,13 +6,17 @@ import { newRequestItem, removeExample, requestObject, updateExample } from '../
 import { collectionId, isItemGroup } from '../lib/postman/normalize';
 import { toCollectionFile, collectionFileName } from '../lib/postman/export';
 import type { PmCollection, PmItem, PmItemGroup, PmItemOrGroup, PmResponse } from '../lib/postman/types';
+import { copyText } from '../lib/clipboard';
 import { downloadText } from '../lib/download';
+import { getFile } from '../lib/files';
+import { copiedMessage, previewRequest } from '../lib/request/preview';
+import { toCurl } from '../lib/request/snippets';
 import { exampleTabId, openTab, requestTabId, tabRoute } from '../lib/tabs';
 import { newCollection, useAppStore } from '../store/AppStore';
 import { IconChevron, IconExample, IconFolder, IconMenu, IconMore, IconPlus } from './Icons';
 import { EnvironmentSelect } from './Layout';
 import { WorkspaceSelect } from './WorkspaceSwitcher';
-import { MethodTag } from './ui';
+import { MethodTag, useToast } from './ui';
 
 interface MenuItem {
   label: string;
@@ -95,6 +99,8 @@ interface TreeProps {
   save: (c: PmCollection) => void;
   /** Double-click: open the tab as a permanent (non-preview) tab. */
   keepOpen: (tabId: string) => void;
+  /** "Copy as cURL" for a request (its open tab's unsaved edits included). */
+  copyCurl: (item: PmItem, parents: PmItemGroup[]) => void;
 }
 
 /** A saved example listed under its request. */
@@ -144,7 +150,7 @@ function ExampleNode({ ex, item, depth, ctx }: { ex: PmResponse; item: PmItem; d
 }
 
 function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents: PmItemGroup[]; depth: number; ctx: TreeProps }) {
-  const { collection, activeId, activeExampleId, expanded, toggle, save, keepOpen } = ctx;
+  const { collection, activeId, activeExampleId, expanded, toggle, save, keepOpen, copyCurl } = ctx;
   const navigate = useNavigate();
   const [renaming, setRenaming] = useState(false);
   const cid = collectionId(collection);
@@ -242,7 +248,7 @@ function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents:
             <span className="tree-name">{node.name}</span>
           </Link>
         )}
-        <Menu label={`Actions for request ${node.name}`} items={common} />
+        <Menu label={`Actions for request ${node.name}`} items={[{ label: 'Copy as cURL', onClick: () => copyCurl(node, parents) }, ...common.map((m, i) => (i === 0 ? { ...m, sep: true } : m))]} />
       </div>
       {open && (
         <ul aria-label={`Examples of ${node.name}`}>
@@ -256,8 +262,18 @@ function TreeNode({ node, parents, depth, ctx }: { node: PmItemOrGroup; parents:
 }
 
 export function Sidebar({ activeId, activeCollectionId, activeExampleId = null }: { activeId: string | null; activeCollectionId: string | null; activeExampleId?: string | null }) {
-  const { state, dispatch, setTabs } = useAppStore();
+  const { state, dispatch, setTabs, drafts } = useAppStore();
   const keepOpen = (tabId: string) => setTabs((t) => openTab(t, tabId));
+  const [toast, showToast] = useToast();
+  const copyCurl = (collection: PmCollection, item: PmItem, parents: PmItemGroup[]) => {
+    const draft = drafts.get(requestTabId(collectionId(collection), item.id!)) as PmItem | undefined;
+    const environment = state.environments.find((e) => e.id === state.activeEnvironmentId) ?? null;
+    const req = previewRequest({ collection, parents, item: draft ?? item, environment, globals: state.globals, files: getFile });
+    copyText(toCurl(req)).then(
+      () => showToast(copiedMessage('cURL', req)),
+      (e) => showToast(e instanceof Error ? e.message : String(e)),
+    );
+  };
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [collapsed, setCollapsed] = useState(false);
@@ -339,7 +355,7 @@ export function Sidebar({ activeId, activeCollectionId, activeExampleId = null }
             if (!open) toggle(cid);
             navigate(`/f/${cid}/${f.id}`);
           };
-          const ctx: TreeProps = { collection: c, activeId, activeExampleId, expanded, toggle, save, keepOpen };
+          const ctx: TreeProps = { collection: c, activeId, activeExampleId, expanded, toggle, save, keepOpen, copyCurl: (it, ps) => copyCurl(c, it, ps) };
           return (
             <li key={cid}>
               <div className={activeCollectionId === cid && !activeId ? 'tree-row collection-row active' : 'tree-row collection-row'}>
@@ -419,6 +435,7 @@ export function Sidebar({ activeId, activeCollectionId, activeExampleId = null }
       <div className="sidebar-body" id="sidebar-body">
         {body}
       </div>
+      {toast}
     </aside>
   );
 }

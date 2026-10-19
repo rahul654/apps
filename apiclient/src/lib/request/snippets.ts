@@ -1,15 +1,44 @@
 import type { PreparedRequest } from './build';
 
+/** POSIX shell single-quoting (bash, zsh, Git Bash, WSL, macOS Terminal). */
 const sh = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
+/** Double-quoted value inside a curl -F argument (file names). */
+const formQuote = (s: string) => `"${s.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
+
+/**
+ * The resolved request as a curl command, like Postman's "Copy as cURL".
+ *  - `--location`: the app follows redirects (fetch's default), so the command does too.
+ *  - `--request` only where curl wouldn't pick the method itself (GET without data, POST with data).
+ *  - `--head` for HEAD (`-X HEAD` makes curl wait for a body that never comes).
+ *  - `--globoff` when the URL has [] or {}, which curl would otherwise treat as ranges.
+ *  - Text form fields that curl would parse (`@file`, `<file`, `;type=`) go as `--form-string`.
+ */
 export function toCurl(req: PreparedRequest): string {
-  const lines = [`curl -X ${req.method} ${sh(req.url)}`];
-  for (const h of req.headers) lines.push(`  -H ${sh(`${h.key}: ${h.value}`)}`);
+  const method = req.method.toUpperCase();
+  const data: string[] = [];
   const b = req.body;
-  if (b.kind === 'text' && b.text) lines.push(`  --data-raw ${sh(b.text)}`);
-  else if (b.kind === 'form') for (const p of b.parts) lines.push(p.file ? `  -F ${sh(`${p.key}=@${p.fileName ?? 'file'}`)}` : `  -F ${sh(`${p.key}=${p.value ?? ''}`)}`);
-  else if (b.kind === 'bytes') lines.push(`  --data-binary ${sh(`@${b.fileName ?? 'file'}`)}`);
-  return lines.join(' \\\n');
+  if (b.kind === 'text' && b.text) data.push(`--data-raw ${sh(b.text)}`);
+  else if (b.kind === 'form') {
+    for (const p of b.parts) {
+      if (p.file || p.fileName) data.push(`--form ${sh(`${p.key}=@${formQuote(p.fileName ?? 'file')}${p.contentType ? `;type=${p.contentType}` : ''}`)}`);
+      else {
+        const v = p.value ?? '';
+        data.push(/^[@<]|;/.test(v) ? `--form-string ${sh(`${p.key}=${v}`)}` : `--form ${sh(`${p.key}=${v}`)}`);
+      }
+    }
+  } else if (b.kind === 'bytes') data.push(`--data-binary ${sh(`@${b.fileName ?? 'file'}`)}`);
+
+  const first = ['curl', '--location'];
+  if (/[[\]{}]/.test(req.url)) first.push('--globoff');
+  if (method === 'HEAD') first.push('--head');
+  else if (!(method === 'GET' && data.length === 0) && !(method === 'POST' && data.length > 0)) first.push(`--request ${method}`);
+  first.push(sh(req.url));
+
+  const lines = [first.join(' ')];
+  for (const h of req.headers) lines.push(`--header ${sh(`${h.key}: ${h.value}`)}`);
+  lines.push(...data);
+  return lines.join(' \\\n  ');
 }
 
 const js = (s: string) => JSON.stringify(s);
