@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Tambola" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/festive_purple</item>
+    </style>
+</resources>
