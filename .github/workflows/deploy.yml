@@ -1,0 +1,62 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: Rebuild and test every app, ignoring the build cache
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          # Reuse downloaded npm packages between runs, so apps that do change install faster.
+          cache: npm
+          cache-dependency-path: '*/package-lock.json'
+      # Finished builds of each app, keyed inside by a fingerprint of the app's files
+      # (scripts/build-site.mjs). Unchanged apps are copied from here instead of being
+      # installed, tested and built again. A new cache is saved after every successful run;
+      # restore-keys picks up the most recent one.
+      - uses: actions/cache@v6
+        with:
+          path: .build-cache
+          key: app-builds-${{ runner.os }}-${{ github.sha }}
+          restore-keys: app-builds-${{ runner.os }}-
+      - name: Build changed apps and assemble _site/
+        run: node scripts/build-site.mjs
+        env:
+          FORCE_REBUILD: ${{ inputs.rebuild_all && '1' || '' }}
+      # GitHub Pages always replaces the whole site, so the artifact holds every app.
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+          # v4+ leaves out dotfiles by default; _site/.nojekyll must reach Pages.
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

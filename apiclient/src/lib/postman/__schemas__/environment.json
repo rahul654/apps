@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "https://rahul654.github.io/apps/apiclient/schemas/environment.json",
+  "title": "Postman environment / globals export",
+  "description": "Hand-written from Postman's export format; Postman publishes no public schema for this file.",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "value": { "type": "string" },
+          "type": { "type": "string", "enum": ["default", "secret", "any", "string", "boolean", "number"] },
+          "enabled": { "type": "boolean" },
+          "description": { "type": "string" }
+        },
+        "required": ["key", "value"]
+      }
+    },
+    "_postman_variable_scope": { "type": "string", "enum": ["environment", "globals"] },
+    "_postman_exported_at": { "type": "string" },
+    "_postman_exported_using": { "type": "string" }
+  },
+  "required": ["name", "values", "_postman_variable_scope"]
+}

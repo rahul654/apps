@@ -1,0 +1,17 @@
+{
+  "info": { "name": "Old v2.0", "_postman_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json" },
+  "item": [
+    {
+      "name": "Basic auth v2.0 style",
+      "request": {
+        "url": "https://example.com/a?x=1",
+        "method": "GET",
+        "header": "Accept: application/json\nX-Trace: 1",
+        "auth": { "type": "basic", "basic": { "username": "u", "password": "p" } }
+      }
+    },
+    { "name": "Str", "request": "https://example.com/str" },
+    { "name": "F", "item": [{ "name": "In folder", "request": { "url": "https://example.com/f", "method": "DELETE" }, "event": [{ "listen": "test", "script": { "exec": "pm.test('x', function(){});" } }] }] }
+  ],
+  "auth": { "type": "apikey", "apikey": { "key": "X-Key", "value": "k", "in": "header" } }
+}

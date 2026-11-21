@@ -1,0 +1,43 @@
+{
+  "name": "whiteboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.0",
+    "sliced": "file:./stubs/sliced"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^31.0.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.6",
+    "vitest": "^5.1.1"
+  },
+  "overrides": {
+    "@excalidraw/excalidraw": {
+      "nanoid": "^3.3.20",
+      "@excalidraw/mermaid-to-excalidraw": {
+        "nanoid": "^5.1.16"
+      },
+      "@radix-ui/react-tabs": "^1.1.22"
+    },
+    "lodash-es": "^4.18.1",
+    "katex": "^0.19.1",
+    "sliced": "$sliced"
+  }
+}

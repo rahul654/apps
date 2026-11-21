@@ -1,0 +1,144 @@
+{
+  "info": {
+    "_postman_id": "11111111-2222-4333-8444-555555555555",
+    "name": "Realistic API",
+    "description": "Fixture with nested folders, auth inheritance, scripts, variables, form-data and examples.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "123456",
+    "_collection_link": "https://example.postman.co/x"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Login flows",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('logged in', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('token', pm.response.json().token);"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": { "type": "text/javascript", "exec": ["console.log('about to log in');"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "X-Debug", "value": "1", "disabled": true }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user\": \"{{user}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/login?remember=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["login"],
+              "query": [{ "key": "remember", "value": "true" }]
+            },
+            "auth": { "type": "noauth" },
+            "description": "Returns a token"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/login", "host": ["{{baseUrl}}"], "path": ["login"] } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "cookie": [],
+              "body": "{\"token\":\"abc\"}"
+            }
+          ]
+        },
+        {
+          "name": "Nested",
+          "auth": { "type": "basic", "basic": [{ "key": "username", "value": "u", "type": "string" }, { "key": "password", "value": "p", "type": "string" }] },
+          "variable": [{ "key": "folderVar", "value": "fv" }],
+          "item": [
+            {
+              "name": "Inherits basic",
+              "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/users/:id", "host": ["{{baseUrl}}"], "path": ["users", ":id"], "variable": [{ "key": "id", "value": "42" }] } },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('folderScript', '1');"] } }]
+    },
+    {
+      "name": "Upload",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "title", "value": "hello", "type": "text" },
+            { "key": "file", "type": "file", "src": "/tmp/photo.png" },
+            { "key": "note", "value": "x", "type": "text", "disabled": true, "contentType": "text/plain" }
+          ]
+        },
+        "url": { "raw": "{{baseUrl}}/upload", "host": ["{{baseUrl}}"], "path": ["upload"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Form",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": { "mode": "urlencoded", "urlencoded": [{ "key": "a", "value": "1", "type": "text" }, { "key": "b c", "value": "d&e" }] },
+        "url": "https://example.com/form"
+      },
+      "response": []
+    },
+    {
+      "name": "GraphQL",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": { "mode": "graphql", "graphql": { "query": "query { me { id } }", "variables": "{\"x\":1}" } },
+        "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] }
+      },
+      "response": []
+    },
+    {
+      "name": "OAuth kept",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            { "key": "accessToken", "value": "tok", "type": "string" },
+            { "key": "tokenType", "value": "bearer", "type": "string" },
+            { "key": "addTokenTo", "value": "header", "type": "string" },
+            { "key": "grant_type", "value": "authorization_code", "type": "string" }
+          ]
+        },
+        "url": { "raw": "{{baseUrl}}/me", "host": ["{{baseUrl}}"], "path": ["me"] }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('ran', 'yes');"] } },
+    { "listen": "test", "script": { "type": "text/javascript", "exec": [""] } }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.example.com", "type": "string" },
+    { "key": "user", "value": "alice", "type": "string" }
+  ],
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "protocolProfileBehavior": { "disableBodyPruning": true }
+}

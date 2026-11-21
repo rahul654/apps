@@ -1,0 +1,6 @@
+{
+  "name": "sharp",
+  "version": "0.0.0-stub",
+  "description": "Empty stand-in. transformers.js lists sharp for Node.js image loading; the browser build never loads it. Replaced via package.json overrides.",
+  "main": "index.js"
+}

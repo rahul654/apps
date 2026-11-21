@@ -1,0 +1,6 @@
+{
+  "name": "sliced",
+  "version": "0.0.0-stub",
+  "description": "Stand-in for the deprecated sliced@1.0.1 (used by png-chunks-encode, via Excalidraw). Same behaviour via Array.prototype.slice. Replaced via package.json overrides.",
+  "main": "index.js"
+}
