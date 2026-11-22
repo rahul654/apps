@@ -1,5 +1,9 @@
-// The upload queue. Files are uploaded one at a time, smallest first, each in chunks of up to
-// 8 MiB sent to the Apps Script, which passes them on to a Drive resumable upload.
+// The upload queue. Up to MAX_PARALLEL files upload at the same time, started smallest first;
+// when one finishes, the next smallest waiting file starts in its place. Each file goes in chunks
+// of up to 8 MiB, in order (Drive's resumable upload needs that), sent to the Apps Script, which
+// passes them on to Drive. MAX_INFLIGHT_BYTES caps the chunk data held in memory across all
+// uploads (each chunk also exists as a ~1.33× base64 string while it's sent), so ten big videos
+// don't use hundreds of MB on a phone.
 //
 // - A failed chunk (network, timeout, Google hiccup) is retried after 2, 5, 10 and 20 s; before
 //   each retry the script is asked how much Drive already has (`status`), so a chunk whose reply
@@ -48,13 +52,45 @@ type UploadsState = {
 
 export const uploads = createStore<UploadsState>({ jobs: [], pause: null, speed: 0 });
 
+/** Files uploading at the same time. */
+export const MAX_PARALLEL = 10;
+/** Raw chunk bytes read and in flight at once, across all uploads (4 full 8 MiB chunks). */
+export const MAX_INFLIGHT_BYTES = 32 * 1024 * 1024;
 const START_TIMEOUT = 60_000;
 const CHUNK_TIMEOUT = 180_000; // ~11 MB of base64 on a slow phone connection
 const MAX_RESTARTS = 2;
 
 let seq = 0;
-let running = false;
-let active: { id: string; abort: AbortController } | null = null;
+/** Jobs being uploaded now → their cancel switch. */
+const active = new Map<string, AbortController>();
+let finishedThisRun = 0;
+
+// Shared budget for chunk bytes in memory. A chunk waits until it fits (one always fits when
+// nothing else is in flight).
+let inflight = 0;
+let budgetWaiters: (() => void)[] = [];
+async function reserveBytes(n: number) {
+  while (inflight > 0 && inflight + n > MAX_INFLIGHT_BYTES) await new Promise<void>((r) => budgetWaiters.push(r));
+  inflight += n;
+}
+function releaseBytes(n: number) {
+  inflight -= n;
+  const waiting = budgetWaiters;
+  budgetWaiters = [];
+  for (const w of waiting) w();
+}
+
+// Overall speed: bytes acknowledged by Drive over the last ~10 s, across all uploads.
+let samples: { t: number; bytes: number }[] = [];
+function recordProgress(bytes: number) {
+  const now = performance.now();
+  samples = [...samples.filter((x) => now - x.t < 10_000), { t: now, bytes }];
+  const span = (now - samples[0].t) / 1000;
+  if (samples.length > 1 && span > 0.5) {
+    const total = samples.slice(1).reduce((n, x) => n + x.bytes, 0);
+    uploads.set((s) => ({ ...s, speed: total / span }));
+  }
+}
 
 function patch(id: string, change: Partial<Job>) {
   uploads.set((s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...change } : j)) }));
@@ -81,46 +117,60 @@ export function addFiles(files: Iterable<File>) {
   }));
   if (!added.length) return;
   uploads.set((s) => ({ ...s, jobs: [...s.jobs, ...added] }));
-  void kick();
+  kick();
 }
 
-/** What uploads next: an interrupted file first, then the smallest queued one. */
+/** What uploads next (not already running): interrupted files first, then the smallest queued one. */
 function nextJob(): Job | undefined {
-  const { jobs } = uploads.get();
-  return jobs.find((j) => j.state === 'paused' || j.state === 'uploading') ?? bySizeAscending(jobs.filter((j) => j.state === 'queued'))[0];
+  const waiting = uploads.get().jobs.filter((j) => !active.has(j.id));
+  return waiting.find((j) => j.state === 'paused' || j.state === 'uploading') ?? bySizeAscending(waiting.filter((j) => j.state === 'queued'))[0];
 }
 
-async function kick() {
-  if (running || uploads.get().pause) return;
-  running = true;
-  wakeLock.take();
-  let finished = 0;
-  try {
-    for (let j = nextJob(); j && !uploads.get().pause; j = nextJob()) {
-      if ((await runJob(j.id)) === 'done') finished++;
-    }
-  } finally {
-    running = false;
-    active = null;
-    wakeLock.release();
+/** Fills free upload slots with waiting files. */
+function kick() {
+  for (let j = nextJob(); j && !uploads.get().pause && active.size < MAX_PARALLEL; j = nextJob()) {
+    const id = j.id;
+    const abort = new AbortController();
+    active.set(id, abort);
+    if (active.size === 1) wakeLock.take();
+    void runJob(id, abort)
+      .then((r) => {
+        if (r === 'done') finishedThisRun++;
+      })
+      .finally(() => {
+        active.delete(id);
+        kick();
+        if (!active.size) idle();
+      });
   }
+}
+
+/** Nothing uploading any more: let the screen sleep, and say how it went. */
+function idle() {
+  wakeLock.release();
   const s = uploads.get();
-  if (!s.pause && finished && !s.jobs.some((j) => j.state === 'queued')) {
-    const failed = s.jobs.filter((j) => j.state === 'failed' || j.state === 'skipped').length;
-    toast(failed ? `Uploads finished: ${failed} couldn’t be uploaded.` : `${finished} file${finished === 1 ? '' : 's'} uploaded.`, failed ? 'error' : 'ok');
-  }
+  const finished = finishedThisRun;
+  if (s.pause || s.jobs.some((j) => j.state === 'queued')) return;
+  finishedThisRun = 0;
+  if (!finished) return;
+  const failed = s.jobs.filter((j) => j.state === 'failed' || j.state === 'skipped').length;
+  toast(failed ? `Uploads finished: ${failed} couldn’t be uploaded.` : `${finished} file${finished === 1 ? '' : 's'} uploaded.`, failed ? 'error' : 'ok');
 }
 
 function pause(why: 'login' | 'error', message: string, id: string) {
   patch(id, { state: 'paused', error: message });
+  if (uploads.get().pause) return; // another upload already paused the queue
   uploads.set((s) => ({ ...s, pause: why, pauseMessage: message }));
   if (why === 'login') openLogin(message);
 }
 
+/** Space the other running uploads will take (not yet in the library's `used`). */
+function reservedByOthers(id: string): number {
+  return uploads.get().jobs.reduce((n, j) => (j.id !== id && active.has(j.id) && j.state !== 'done' ? n + j.size : n), 0);
+}
+
 /** Uploads one job until it's done, failed, skipped, paused or cancelled. */
-async function runJob(id: string): Promise<'done' | 'stopped'> {
-  const abort = new AbortController();
-  active = { id, abort };
+async function runJob(id: string, abort: AbortController): Promise<'done' | 'stopped'> {
   let attempts = 0;
   let restarts = 0;
   // Resuming (after a pause or failed chunk): ask Drive how much it has before sending more.
@@ -130,6 +180,11 @@ async function runJob(id: string): Promise<'done' | 'stopped'> {
   for (;;) {
     const j = job(id);
     if (!j || abort.signal.aborted) return 'stopped';
+    if (uploads.get().pause) {
+      // Another upload paused the queue (login ended, or it gave up retrying): stop here too.
+      patch(id, { state: 'paused' });
+      return 'stopped';
+    }
     const token = currentToken();
     if (!token) {
       pause('login', MESSAGES.expired, id);
@@ -140,7 +195,8 @@ async function runJob(id: string): Promise<'done' | 'stopped'> {
 
     try {
       if (!j.uploadId) {
-        const { used, limit } = library.get();
+        const { limit } = library.get();
+        const used = library.get().used + reservedByOthers(id);
         if (!fits(j.size, used, limit)) {
           patch(id, { state: 'skipped', error: `Not enough space: needs ${formatBytes(j.size)}, ${formatBytes(Math.max(0, limit - used))} left.` });
           return 'stopped';
@@ -161,17 +217,22 @@ async function runJob(id: string): Promise<'done' | 'stopped'> {
       }
 
       const { start, end } = chunkAt(j.received, j.size, j.chunkBytes);
-      const started = performance.now();
-      let bytes: Uint8Array;
+      await reserveBytes(end - start);
+      let r: { done?: boolean; received?: number; item?: unknown };
       try {
-        bytes = new Uint8Array(await j.file.slice(start, end).arrayBuffer());
-      } catch {
-        patch(id, { state: 'failed', error: 'Couldn’t read the file from this device (was it moved or deleted?).' });
-        return 'stopped';
+        if (abort.signal.aborted) return 'stopped';
+        let bytes: Uint8Array;
+        try {
+          bytes = new Uint8Array(await j.file.slice(start, end).arrayBuffer());
+        } catch {
+          patch(id, { state: 'failed', error: 'Couldn’t read the file from this device (was it moved or deleted?).' });
+          return 'stopped';
+        }
+        r = await call<{ done?: boolean; received?: number; item?: unknown }>({ action: 'chunk', uploadId: j.uploadId, offset: start, data: bytesToBase64(bytes) }, CHUNK_TIMEOUT);
+      } finally {
+        releaseBytes(end - start);
       }
-      const r = await call<{ done?: boolean; received?: number; item?: unknown }>({ action: 'chunk', uploadId: j.uploadId, offset: start, data: bytesToBase64(bytes) }, CHUNK_TIMEOUT);
-      const seconds = (performance.now() - started) / 1000;
-      if (seconds > 0) uploads.set((s) => ({ ...s, speed: s.speed ? s.speed * 0.6 + ((end - start) / seconds) * 0.4 : (end - start) / seconds }));
+      recordProgress(end - start);
       attempts = 0;
       if (r.done) return finish(id, r.item);
       patch(id, { received: Number(r.received) || end });
@@ -226,14 +287,14 @@ function finish(id: string, raw: unknown): 'done' {
 /** Continues after a pause (login done, or Retry). */
 export function resume() {
   uploads.set((s) => ({ ...s, pause: null, pauseMessage: undefined }));
-  void kick();
+  kick();
 }
 
 /** Removes a job; an unfinished upload is cancelled on Google's side too. */
 export function cancelJob(id: string) {
   const j = job(id);
   if (!j) return;
-  if (active?.id === id) active.abort.abort();
+  active.get(id)?.abort();
   const token = currentToken();
   if (j.uploadId && token) void callScript({ action: 'cancel', token, uploadId: j.uploadId }, { url: SCRIPT_URL }).catch(() => {});
   uploads.set((s) => {
@@ -241,13 +302,13 @@ export function cancelJob(id: string) {
     const stillPaused = jobs.some((x) => x.state === 'paused');
     return { ...s, jobs, pause: stillPaused ? s.pause : null, pauseMessage: stillPaused ? s.pauseMessage : undefined };
   });
-  void kick();
+  kick();
 }
 
 /** Puts a failed or skipped file back in the queue. */
 export function retryJob(id: string) {
   patch(id, { state: 'queued', error: undefined, received: 0, uploadId: undefined });
-  void kick();
+  kick();
 }
 
 export function clearFinished() {

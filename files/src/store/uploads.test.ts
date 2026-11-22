@@ -68,7 +68,8 @@ describe('upload queue', () => {
     await until(() => mods.uploads.get().jobs.every((j) => j.state === 'done'));
 
     expect(actions.filter((a) => a.action === 'start').map((a) => a.name)).toEqual(['small.txt', 'mid.jpg', 'big.mp4']);
-    expect(actions.filter((a) => a.action === 'chunk').map((a) => a.offset)).toEqual([0, 0, 0, 8 * MIB]);
+    // Files upload side by side, so chunks interleave; the big one still went in two chunks.
+    expect(actions.filter((a) => a.action === 'chunk').map((a) => a.offset).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([0, 0, 0, 8 * MIB]);
     for (const { bytes, file } of [big, small, mid]) expect(driveFile(file.name).content.equals(bytes)).toBe(true);
     // The list shows them without waiting for a refresh, with the space used.
     expect(mods.library.library.get().items.map((i) => i.name)).toEqual(['big.mp4', 'mid.jpg', 'small.txt']);
@@ -173,6 +174,77 @@ describe('upload queue', () => {
     mods.clearFinished();
     expect(mods.uploads.get().jobs).toEqual([]);
   });
+});
+
+describe('parallel uploads', () => {
+  /** Wraps the in-process fetch to watch what runs at the same time. */
+  function watchFetch(onStart: (body: { action: string; data?: string }) => void, onEnd: (body: { action: string; data?: string }) => void, delayMs = 20) {
+    const inner = globalThis.fetch as unknown as (u: string, i: RequestInit) => Promise<Response>;
+    vi.stubGlobal('fetch', async (u: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      onStart(body);
+      try {
+        await new Promise((r) => setTimeout(r, delayMs));
+        return await inner(u, init);
+      } finally {
+        onEnd(body);
+      }
+    });
+  }
+
+  it('uploads up to 10 files at the same time, the smallest 10 first', async () => {
+    let now = 0;
+    let max = 0;
+    watchFetch(
+      () => (max = Math.max(max, ++now)),
+      () => now--,
+    );
+    const files = Array.from({ length: 14 }, (_, i) => fileOf(`f${String(i).padStart(2, '0')}.bin`, 2000 - i * 10, 'application/octet-stream', i));
+    mods.addFiles(files.map((f) => f.file));
+    await until(() => mods.uploads.get().jobs.every((j) => j.state === 'done'));
+    expect(max).toBe(mods.MAX_PARALLEL);
+    expect(mods.MAX_PARALLEL).toBe(10);
+    // Smallest first: f13 (1870 B) … f04 start in the first wave.
+    expect(actions.filter((a) => a.action === 'start').slice(0, 10).map((a) => a.name)).toEqual(['f13.bin', 'f12.bin', 'f11.bin', 'f10.bin', 'f09.bin', 'f08.bin', 'f07.bin', 'f06.bin', 'f05.bin', 'f04.bin']);
+    for (const { file, bytes } of files) expect(driveFile(file.name).content.equals(bytes)).toBe(true);
+  });
+
+  it('keeps at most 32 MiB of chunk data in flight, however many files run', async () => {
+    let now = 0;
+    let max = 0;
+    const size = (b: { action: string; data?: string }) => (b.action === 'chunk' ? Buffer.from(b.data ?? '', 'base64').length : 0);
+    watchFetch(
+      (b) => (max = Math.max(max, (now += size(b)))),
+      (b) => (now -= size(b)),
+    );
+    const files = Array.from({ length: 6 }, (_, i) => fileOf(`v${i}.mp4`, 9 * MIB + i, 'video/mp4', i));
+    mods.addFiles(files.map((f) => f.file));
+    await until(() => mods.uploads.get().jobs.every((j) => j.state === 'done'), 30_000);
+    expect(max).toBeLessThanOrEqual(mods.MAX_INFLIGHT_BYTES);
+    expect(max).toBeGreaterThan(8 * MIB); // really in parallel
+    for (const { file, bytes } of files) expect(driveFile(file.name).content.equals(bytes)).toBe(true);
+  }, 40_000);
+
+  it('a login ending pauses every running upload; logging in resumes them all', async () => {
+    const files = [fileOf('a.bin', 9 * MIB, 'application/octet-stream', 1), fileOf('b.bin', 9 * MIB + 1, 'application/octet-stream', 2), fileOf('c.bin', 9 * MIB + 2, 'application/octet-stream', 3)];
+    const inner = globalThis.fetch as unknown as (u: string, i: RequestInit) => Promise<Response>;
+    let changed = false;
+    vi.stubGlobal('fetch', async (u: string, init: RequestInit) => {
+      const res = await inner(u, init);
+      if (!changed && JSON.parse(String(init.body)).action === 'chunk') {
+        changed = true;
+        gs.props.set('UPLOAD_PASSWORD', 'new-pw');
+      }
+      return res;
+    });
+    mods.addFiles(files.map((f) => f.file));
+    await until(() => mods.uploads.get().pause === 'login' && mods.uploads.get().jobs.every((j) => j.state === 'paused' || j.state === 'done'));
+    expect(mods.uploads.get().jobs.some((j) => j.state === 'paused')).toBe(true);
+    await mods.auth.login('new-pw');
+    await until(() => mods.uploads.get().jobs.every((j) => j.state === 'done'), 20_000);
+    for (const { file, bytes } of files) expect(driveFile(file.name).content.equals(bytes)).toBe(true);
+    expect(actions.filter((a) => a.action === 'start')).toHaveLength(3); // none started over
+  }, 30_000);
 });
 
 describe('text and delete', () => {

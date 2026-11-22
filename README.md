@@ -101,7 +101,7 @@ It needs its own Apps Script, separate from the gate's: [files/apps-script/Code.
 ### Using it
 
 - **Viewing (anyone):** tap an item to open it: photos full size, videos and PDFs in Google's player, text with **Copy text**. **Copy link** gives a link straight to that item.
-- **Uploading:** 📎 (several files at once), paste images into the text box, or drag files onto the page on a computer. **Keep the page open until it finishes.** It keeps the screen on, and a locked phone pauses the upload, which continues when you come back. A dropped connection retries by itself and continues from the last piece.
+- **Uploading:** 📎 (several files at once), paste images into the text box, or drag files onto the page on a computer. Up to 10 files upload at the same time, smallest first; when one finishes, the next starts. **Keep the page open until it finishes.** It keeps the screen on, and a locked phone pauses the upload, which continues when you come back. A dropped connection retries by itself and continues from the last piece.
 - **Text:** type or paste in the box at the bottom and press **Send** (Ctrl+Enter). It's saved as a `.txt` named after its first line.
 - **Deleting:** tick items (or **Select all**) → **Delete**, or **Delete** inside an item. **It's permanent: it skips the Drive Trash.** The script only deletes files inside its own folder.
 - **1-hour login:** checked every 15 s locally and every 2 minutes with the script, without reloading. When it ends, the upload and delete buttons disappear, a running upload pauses, and the password box appears. After logging in, the upload continues from the last piece Drive has, and the text you'd typed is still there.
@@ -109,7 +109,7 @@ It needs its own Apps Script, separate from the gate's: [files/apps-script/Code.
 ### Change the password, the limit or the folder
 
 - **Password:** edit `UPLOAD_PASSWORD` in Script properties. It works at once and signs every device out.
-- **Limit:** edit `LIMIT_MB`. The limit counts the files in the folder plus uploads still in progress.
+- **Limit:** edit `LIMIT_MB` (`2048` = 2 GB). It works on the next request, with no new deployment, and the page shows it within 30 s. The limit counts the files in the folder plus uploads still in progress. It's only this app's cap: the files still use your Google account's storage (15 GB free, shared with Gmail and Photos).
 - **Another folder:** set `FOLDER_ID` (the ID in the folder's URL). Files the script creates are each shared "anyone with the link", so the folder's own sharing doesn't matter.
 - **Editing the code** needs **Deploy → Manage deployments → ✏️ → Version: New version**. The URL stays the same.
 

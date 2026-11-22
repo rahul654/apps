@@ -3,7 +3,7 @@ import { formatBytes, formatDuration } from '../lib/format';
 import { bySizeAscending } from '../lib/upload';
 import { openLogin } from '../store/auth';
 import { useStore } from '../store/createStore';
-import { cancelJob, clearFinished, resume, retryJob, uploads, type Job } from '../store/uploads';
+import { cancelJob, clearFinished, MAX_PARALLEL, resume, retryJob, uploads, type Job } from '../store/uploads';
 
 const ACTIVE = new Set(['uploading', 'paused']);
 const FINISHED = new Set(['done', 'failed', 'skipped']);
@@ -28,10 +28,15 @@ export function UploadPanel() {
   const sent = counted.reduce((n, j) => n + j.received, 0);
   const done = jobs.filter((j) => j.state === 'done').length;
   const left = total - sent;
-  const eta = pending.length && speed > 0 && !pause ? formatDuration(left / speed) : '';
+  const eta = pending.length && speed > 0 && !pause && left / speed >= 1 ? formatDuration(left / speed) : '';
   const pct = total ? Math.min(100, (sent / total) * 100) : 100;
 
-  const title = pending.length ? (pause ? 'Uploads paused' : `Uploading ${done + 1} of ${done + pending.length}`) : `Uploads finished (${done} of ${jobs.length})`;
+  const running = jobs.filter((j) => j.state === 'uploading').length;
+  const title = pending.length
+    ? pause
+      ? `Uploads paused (${done} of ${done + pending.length} done)`
+      : `Uploading${running > 1 ? ` ${running} at once` : ''} · ${done} of ${done + pending.length} done`
+    : `Uploads finished (${done} of ${jobs.length})`;
 
   return (
     <section className="uploads" aria-label="Uploads">
@@ -77,7 +82,7 @@ export function UploadPanel() {
           ))}
         </ul>
       )}
-      {open && pending.length > 1 && <p className="muted tiny uploads-note">Smallest files go first. Keep this page open until it finishes.</p>}
+      {open && pending.length > 1 && <p className="muted tiny uploads-note">Up to {MAX_PARALLEL} at once, smallest first. Keep this page open until it finishes.</p>}
     </section>
   );
 }
