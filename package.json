@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-site.mjs",
-    "preview": "node scripts/preview.mjs"
+    "preview": "node scripts/preview.mjs",
+    "test": "node --test gate/*.test.mjs",
+    "gate:mock": "node gate/mock-server.mjs"
   }
 }

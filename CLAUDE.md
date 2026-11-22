@@ -14,8 +14,10 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 ├── 404.html                   ← GitHub Pages not-found page
 ├── package.json               ← root scripts only: build / preview
 ├── scripts/
-│   ├── build-site.mjs         ← discovers apps, installs/tests/builds only changed ones, assembles _site/
+│   ├── build-site.mjs         ← discovers apps, installs/tests/builds only changed ones, assembles _site/, adds the password gate
 │   └── preview.mjs            ← serves _site/ under /apps/ to mirror Pages locally
+├── gate/                      ← password gate for every page (not an app: no package.json)
+├── docs/changelog/            ← one file per feature that isn't inside an app
 ├── .github/workflows/deploy.yml  ← on push to main: build-site (with .build-cache restored) → deploy to Pages
 ├── README.md                  ← how to run + host on GitHub Pages
 ├── splitwise/                 ← expense splitting (Vite + React 19 + TypeScript)
@@ -53,10 +55,23 @@ apps/                          ← git root; repo name "apps" = the /apps URL pr
 | --- | --- | --- |
 | root | `npm run build` | Build changed apps into `_site/` (`node scripts/build-site.mjs --no-cache` rebuilds all) |
 | root | `npm run preview` | Serve `_site/` at http://localhost:4173/apps/ |
+| root | `npm test` | Password gate tests (`gate/*.test.mjs`, also run by the build) |
+| root | `npm run gate:mock` | Local stand-in for the gate's Apps Script on port 4335 (`GATE_PASSWORD=…`) |
 | `splitwise/` | `npm run dev` | Vite dev server with HMR |
 | `splitwise/` | `npm test` | Vitest unit tests (split + balance maths) |
 | `splitwise/` | `npm run build` | Type-check (`tsc -b`) and build to `dist/` |
 | `devtools/`, `filetools/`, `recorder/`, `transcribe/`, `whiteboard/`, `apiclient/`, `drop/` | same `dev` / `test` / `build` scripts | Each app is self-contained |
+
+## Password gate (`gate/`)
+
+One shared password for the whole site, checked by a Google Apps Script web app (`gate/apps-script.gs`, password in its Script properties `PASSWORD`); a login lasts 1 hour. It keeps casual visitors out; it is **not** access control (Pages serves every file to anyone). Setup steps: README "Password". Full notes: `docs/changelog/2026-11-22-password-gate.md`.
+
+- **Added at build time, never in app source.** `build-site.mjs` runs `gate/*.test.mjs`, copies `GATE_FILES` (`auth-gate.js`, `core.js`, `config.js`) to `_site/gate/` and calls `injectGate` (`gate/inject.mjs`) on `_site/index.html` and every `_site/<app>/index.html`: a hiding `<style data-apps-gate>` plus `<script type="module" src="<rel>/gate/auth-gate.js">` at the start of `<head>`, and every other `<script type="module">` renamed to `type="text/x-gated-module"`. `auth-gate.js` turns them back on after unlocking, so app code doesn't run while locked. Cached app builds don't contain the gate; dev servers aren't gated. A new app's `dist/index.html` needs a `<head>`.
+- **Script protocol** (`apps-script.gs` header): POST, JSON body sent as `text/plain` (a CORS-simple request: Apps Script can't answer OPTIONS), actions `login`/`check`/`ping`; GET shows `configured`. Token = `<exp>.<password version>.<HMAC>` signed with `SIGNING_SECRET` (made on first login, kept in Script properties). Changing `PASSWORD` → `changed`; edited token → `invalid`. 30 wrong passwords within 10 min block every login for 10 min (no client IP in Apps Script). Changing the `.gs` code needs a new deployment version; changing `PASSWORD` doesn't.
+- **Testing the script:** `gate/gas-runtime.mjs` runs the real `.gs` in `node:vm` with stand-ins for PropertiesService, CacheService, LockService, Utilities (Java signed bytes) and ContentService. Used by `apps-script.test.mjs`, `core.test.mjs` and `gate/mock-server.mjs` (`npm run gate:mock`). Only use Apps Script APIs the runtime stubs; add a stub when using another.
+- **Session (`core.js`):** localStorage `apps:gate:v2` = `{v:2, token, exp}`; `exp` = this device's now + the `ttl` the script returned (capped at 1 h), so clock skew can't extend it. A page with a valid session opens at once, then POSTs `check`; a failed check locks it (offline: keeps working). Rechecked locally every 15 s, on `visibilitychange`, `storage` and `pageshow`. The old `apps:gate:v1` key is deleted.
+- **Lock screen:** `<apps-gate>` with an open shadow root, appended to `<html>` (not `<body>`, which is `inert` + hidden while locked). Key and clipboard events are stopped at the host so app shortcuts underneath don't fire. Locking mid-session never reloads the page, so recordings/transfers keep going. Each lock sends a `ping` to wake the script (cold starts take 1–2 s).
+- Browser check: build, `GATE_PASSWORD=… npm run gate:mock`, set `GATE_URL` in `_site/gate/config.js` (built copy only) to `http://localhost:4335/exec`, `npm run preview`. `kill -USR2` on the mock sets the password to `GATE_PASSWORD_NEXT`.
 
 ## Dev Tools (`devtools/`)
 

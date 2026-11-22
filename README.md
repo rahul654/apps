@@ -19,6 +19,54 @@ A single git repo holding several small web apps, published together on GitHub P
 
 ---
 
+## Password
+
+Every page asks for one shared password and stays unlocked for 1 hour in that browser. The password is checked by a small **Google Apps Script** that runs free on Google as your account. Change it there at any time; nothing in this repo changes and nothing is redeployed.
+
+**This keeps casual visitors out; it isn't real access control.** GitHub Pages serves every file to anyone who asks for it directly.
+
+### Set up the Apps Script (once, ~5 minutes)
+
+1. Go to https://script.google.com → **New project**. Name it e.g. `apps-gate`.
+2. Delete what's in `Code.gs` and paste the whole of [gate/apps-script.gs](gate/apps-script.gs). Press **Save** (💾).
+3. **Project Settings** (⚙ on the left) → **Script properties** → **Add script property**: Property `PASSWORD`, Value = your password → **Save script properties**.
+4. **Deploy → New deployment** → ⚙ next to "Select type" → **Web app**:
+   - Description: `apps gate`
+   - Execute as: **Me**
+   - Who has access: **Anyone** (not "Anyone with Google account")
+   - **Deploy**. Google asks to authorise: choose your account → *Advanced* → *Go to apps-gate (unsafe)* → **Allow**. ("Unsafe" only means Google hasn't reviewed your own script.)
+5. Copy the **Web app URL** (`https://script.google.com/macros/s/…/exec`) and put it in [gate/config.js](gate/config.js) as `GATE_URL`. Commit and push.
+
+### Check that it works
+
+1. **The script answers:** open the `/exec` URL in a browser. You should see `{"ok":true,"service":"apps-gate","configured":true}`. `configured:false` means step 3 is missing; a Google sign-in page means step 4 wasn't "Anyone".
+2. **Wrong and right password from a terminal** (`-L` follows Google's redirect):
+   ```bash
+   curl -sL -H 'Content-Type: text/plain' -d '{"action":"login","password":"wrong"}' '<web app URL>'
+   # {"ok":false,"error":"wrong"}
+   curl -sL -H 'Content-Type: text/plain' -d '{"action":"login","password":"<your password>"}' '<web app URL>'
+   # {"ok":true,"token":"…","ttl":3600000}
+   curl -sL -H 'Content-Type: text/plain' -d '{"action":"check","token":"<token from above>"}' '<web app URL>'
+   # {"ok":true,"ttl":…}
+   ```
+3. **The site:** after the deploy, open https://rahul654.github.io/apps/ in a private window → lock screen → a wrong password says "That password isn't right" → the right one opens the page, and every app opens without asking again for an hour.
+4. **Logging out everyone:** change `PASSWORD` in Script properties. Open tabs lock on their next page load with "The password was changed".
+
+### Change the password
+
+Apps Script → **Project Settings → Script properties** → edit `PASSWORD` → **Save**. It works at once; there's no new deployment to make.
+
+### Good to know
+
+- **Editing the script's code** (not the password) needs **Deploy → Manage deployments → ✏️ → Version: New version → Deploy**. The URL stays the same.
+- **30 wrong passwords within 10 minutes** pause all logins for 10 minutes (Apps Script can't see who is asking, so this applies to everyone, you included).
+- `SIGNING_SECRET` appears in Script properties after the first login. Leave it alone; deleting it logs everyone out.
+- **Trying it locally:** `npm run build`, then `GATE_PASSWORD=test-password-1 npm run gate:mock` (a stand-in for the script on port 4335), set `GATE_URL` in `_site/gate/config.js` to `http://localhost:4335/exec`, and `npm run preview`.
+
+Details: [docs/changelog/2026-11-22-password-gate.md](docs/changelog/2026-11-22-password-gate.md).
+
+---
+
 ## Run locally
 
 ```bash

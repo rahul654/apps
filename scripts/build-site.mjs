@@ -14,15 +14,20 @@
 //
 //   node scripts/build-site.mjs              rebuild changed apps only
 //   node scripts/build-site.mjs --no-cache   rebuild everything (also: FORCE_REBUILD=1)
+//
+// Password gate: gate/ is not an app. Its tests run first, its browser files go to _site/gate/,
+// and every page (_site/index.html and _site/<app>/index.html) gets the gate added after the
+// apps are built (gate/inject.mjs). Cached app builds never contain it.
 import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { GATE_FILES, injectGate } from '../gate/inject.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const out = join(root, '_site');
 const cacheRoot = join(root, '.build-cache');
-const IGNORED = new Set(['node_modules', 'scripts', '_site', 'logs']);
+const IGNORED = new Set(['node_modules', 'scripts', '_site', 'logs', 'gate', 'docs']);
 const forceRebuild = process.argv.includes('--no-cache') || /^(1|true|yes)$/i.test(process.env.FORCE_REBUILD ?? '');
 
 const run = (cmd, cwd) => execSync(cmd, { cwd, stdio: 'inherit' });
@@ -73,6 +78,13 @@ function fingerprint(app) {
     hash.update(`${file}\0`).update(readFileSync(path)).update('\0');
   }
   return hash.digest('hex').slice(0, 20);
+}
+
+// The password gate guards every page, so a failing gate test blocks the deploy like an app test.
+{
+  const gateTests = readdirSync(join(root, 'gate')).filter((f) => f.endsWith('.test.mjs')).map((f) => join('gate', f));
+  console.log('\n▶ gate: testing the password gate');
+  execFileSync(process.execPath, ['--test', ...gateTests], { cwd: root, stdio: 'inherit' });
 }
 
 rmSync(out, { recursive: true, force: true });
@@ -133,6 +145,15 @@ for (const file of ['index.html', '404.html']) {
   if (existsSync(join(root, file))) cpSync(join(root, file), join(out, file));
 }
 writeFileSync(join(out, '.nojekyll'), ''); // stop GitHub Pages running Jekyll over the output
+
+// Password gate: copy its browser files and add it to every page. 404.html shows nothing to protect.
+mkdirSync(join(out, 'gate'));
+for (const file of GATE_FILES) cpSync(join(root, 'gate', file), join(out, 'gate', file));
+for (const page of [join(out, 'index.html'), ...apps.map((app) => join(out, app, 'index.html'))]) {
+  if (!existsSync(page)) throw new Error(`Missing ${relative(root, page)}: every app needs an index.html.`);
+  const gateDir = `${relative(dirname(page), join(out, 'gate')).split(sep).join('/') || '.'}/`;
+  writeFileSync(page, injectGate(readFileSync(page, 'utf8'), gateDir.startsWith('.') ? gateDir : `./${gateDir}`));
+}
 
 const built = results.filter((r) => r.action === 'built').map((r) => r.app);
 const reused = results.filter((r) => r.action === 'reused').map((r) => r.app);
