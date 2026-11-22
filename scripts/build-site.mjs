@@ -17,12 +17,12 @@
 //
 // Password gate: gate/ is not an app. Its tests run first, its browser files go to _site/gate/,
 // and every page (_site/index.html and _site/<app>/index.html) gets the gate added after the
-// apps are built (gate/inject.mjs). Cached app builds never contain it.
+// apps are built (gate/inject.mjs), except the apps in PUBLIC_APPS. Cached app builds never contain it.
 import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { GATE_FILES, injectGate } from '../gate/inject.mjs';
+import { GATE_FILES, injectGate, PUBLIC_APPS } from '../gate/inject.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const out = join(root, '_site');
@@ -146,10 +146,10 @@ for (const file of ['index.html', '404.html']) {
 }
 writeFileSync(join(out, '.nojekyll'), ''); // stop GitHub Pages running Jekyll over the output
 
-// Password gate: copy its browser files and add it to every page. 404.html shows nothing to protect.
+// Password gate: copy its browser files and add it to every page except PUBLIC_APPS. 404.html shows nothing to protect.
 mkdirSync(join(out, 'gate'));
 for (const file of GATE_FILES) cpSync(join(root, 'gate', file), join(out, 'gate', file));
-for (const page of [join(out, 'index.html'), ...apps.map((app) => join(out, app, 'index.html'))]) {
+for (const page of [join(out, 'index.html'), ...apps.filter((app) => !PUBLIC_APPS.includes(app)).map((app) => join(out, app, 'index.html'))]) {
   if (!existsSync(page)) throw new Error(`Missing ${relative(root, page)}: every app needs an index.html.`);
   const gateDir = `${relative(dirname(page), join(out, 'gate')).split(sep).join('/') || '.'}/`;
   writeFileSync(page, injectGate(readFileSync(page, 'utf8'), gateDir.startsWith('.') ? gateDir : `./${gateDir}`));

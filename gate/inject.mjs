@@ -1,5 +1,12 @@
 // Build-time half of the password gate (Node only; used by scripts/build-site.mjs).
 
+/**
+ * Apps the gate leaves open: anyone can view them without the site password.
+ * - files: public by design (viewing needs nothing; uploads/deletes have their own password,
+ *   checked by its own Apps Script; see "Files" in README.md).
+ */
+export const PUBLIC_APPS = ['files'];
+
 /** Files copied to _site/gate/. Everything else in gate/ (this file, tests) stays out of the site. */
 export const GATE_FILES = ['auth-gate.js', 'core.js', 'config.js'];
 
