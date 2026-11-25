@@ -1,5 +1,5 @@
 // The upload login. Viewing never needs it; uploading, adding text and deleting do.
-// - login: the Apps Script checks the password and returns a signed 1-hour token.
+// - login: the Apps Script checks the password and returns a signed 12-hour token.
 // - Every 15 s (and when the tab comes back) the page checks the token's local expiry, and every
 //   2 minutes it asks the script whether the token is still good (expired, or password changed).
 //   Either way, without reloading: manage controls disappear, and a running upload pauses and

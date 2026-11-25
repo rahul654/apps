@@ -34,7 +34,7 @@ export function Layout({ children, connected }: { children: ReactNode; connected
         {connected &&
           (session ? (
             <div className="signed-in">
-              <span className="pill ok" title="Upload login; ends after 1 hour">
+              <span className="pill ok" title="Upload login; ends after 12 hours">
                 <span className="dot" aria-hidden="true" /> <span className="hide-xs">Signed in · </span>
                 {formatMinutes(session.exp - now)} left
               </span>

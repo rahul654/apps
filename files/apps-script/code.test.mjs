@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeDrive, loadFilesScript } from './runtime.mjs';
 
 const HOUR = 3_600_000;
+const SESSION = 12 * HOUR;
 const KIB = 1024;
 const MIB = 1024 * KIB;
 const PASSWORD = 'upload-pass';
@@ -52,15 +53,15 @@ describe('setup and GET', () => {
 });
 
 describe('login and tokens', () => {
-  it('right password gives a 1-hour token; wrong ones are refused', () => {
+  it('right password gives a 12-hour token; wrong ones are refused', () => {
     const clock = { now: 1_700_000_000_000 };
     const gs = loadFilesScript({ password: PASSWORD, clock });
     expect(gs.post({ action: 'login', password: 'nope' })).toEqual({ ok: false, error: 'wrong' });
     const res = gs.post({ action: 'login', password: PASSWORD });
-    expect(res).toMatchObject({ ok: true, ttl: HOUR });
+    expect(res).toMatchObject({ ok: true, ttl: SESSION });
     expect(res.token).not.toContain(PASSWORD);
-    expect(gs.post({ action: 'check', token: res.token })).toEqual({ ok: true, ttl: HOUR });
-    clock.now += HOUR;
+    expect(gs.post({ action: 'check', token: res.token })).toEqual({ ok: true, ttl: SESSION });
+    clock.now += SESSION;
     expect(gs.post({ action: 'check', token: res.token }).error).toBe('expired');
   });
 

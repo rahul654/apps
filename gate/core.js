@@ -7,7 +7,7 @@
 
 export const SESSION_KEY = 'apps:gate:v2';
 export const OLD_SESSION_KEYS = ['apps:gate:v1'];
-export const SESSION_MS = 60 * 60 * 1000;
+export const SESSION_MS = 12 * 60 * 60 * 1000;
 export const REQUEST_TIMEOUT_MS = 15_000; // Apps Script can take a few seconds to wake up
 
 /** What each error from the script (or the network) means to the person at the lock screen. */
@@ -17,7 +17,7 @@ export const MESSAGES = {
   'not-configured': 'The password isn’t set up yet (PASSWORD in the Apps Script’s Script properties).',
   'no-url': 'The login service isn’t set up yet (GATE_URL in gate/config.js).',
   network: 'Couldn’t reach the login service. Check your connection and try again.',
-  expired: 'Your hour is up. Enter the password again.',
+  expired: 'Your 12 hours are up. Enter the password again.',
   changed: 'The password was changed. Enter the new one.',
   invalid: 'Please sign in again.',
   'bad-request': 'Something went wrong. Try again.',

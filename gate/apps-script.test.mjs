@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { loadAppsScript } from './gas-runtime.mjs';
 
 const HOUR = 3_600_000;
+const SESSION = 12 * HOUR;
 const login = (gs, password) => gs.post({ action: 'login', password });
 const check = (gs, token) => gs.post({ action: 'check', token });
 
@@ -11,16 +12,16 @@ test('GET says whether the password is set', () => {
   assert.equal(loadAppsScript().get().configured, false);
 });
 
-test('right password gives a 1-hour token that checks out', () => {
+test('right password gives a 12-hour token that checks out', () => {
   const clock = { now: 1_700_000_000_000 };
   const gs = loadAppsScript({ password: 'secret-pass', clock });
   const res = login(gs, 'secret-pass');
   assert.equal(res.ok, true);
-  assert.equal(res.ttl, HOUR);
+  assert.equal(res.ttl, SESSION);
   assert.match(res.token, /^\d+\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{43}$/);
   assert.ok(!res.token.includes('secret-pass'));
-  assert.deepEqual(check(gs, res.token), { ok: true, ttl: HOUR, mimeType: 'application/json' });
-  clock.now += HOUR - 1000;
+  assert.deepEqual(check(gs, res.token), { ok: true, ttl: SESSION, mimeType: 'application/json' });
+  clock.now += SESSION - 1000;
   assert.equal(check(gs, res.token).ttl, 1000);
 });
 
@@ -37,11 +38,11 @@ test('no PASSWORD property → not-configured, and checks fail', () => {
   assert.equal(check(gs, '1.2.3').error, 'invalid');
 });
 
-test('the token ends after an hour', () => {
+test('the token ends after 12 hours', () => {
   const clock = { now: 1_700_000_000_000 };
   const gs = loadAppsScript({ password: 'secret-pass', clock });
   const { token } = login(gs, 'secret-pass');
-  clock.now += HOUR;
+  clock.now += SESSION;
   assert.equal(check(gs, token).error, 'expired');
 });
 
@@ -50,7 +51,7 @@ test('an edited or made-up token is invalid', () => {
   const { token } = login(gs, 'secret-pass');
   const [exp, version, sig] = token.split('.');
   for (const bad of [
-    `${Number(exp) + HOUR}.${version}.${sig}`, // longer expiry
+    `${Number(exp) + SESSION}.${version}.${sig}`, // longer expiry
     `${exp}.${version}.${sig.slice(0, -1)}${sig.endsWith('A') ? 'B' : 'A'}`, // one character changed
     `${exp}.${version}`,
     '',

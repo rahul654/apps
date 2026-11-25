@@ -25,7 +25,7 @@ export const MESSAGES: Record<ErrorCode, string> = {
   wrong: 'That password isn’t right.',
   'too-many': 'Too many wrong passwords. Wait 10 minutes and try again.',
   'not-configured': 'The upload password isn’t set up yet (UPLOAD_PASSWORD in the Apps Script’s Script properties).',
-  expired: 'Your hour is up. Enter the password again to keep uploading.',
+  expired: 'Your 12 hours are up. Enter the password again to keep uploading.',
   changed: 'The upload password was changed. Enter the new one.',
   invalid: 'Please enter the upload password again.',
   full: 'Not enough space left.',

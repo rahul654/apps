@@ -12,7 +12,7 @@
  *   FOLDER_ID        optional. Made by the script on first use (folder "files-app-uploads" in My
  *                    Drive, shared "anyone with the link can view"). Set it yourself to use
  *                    another folder.
- *   SIGNING_SECRET   made by the script; signs the 1-hour login tokens. Don't share it.
+ *   SIGNING_SECRET   made by the script; signs the 12-hour login tokens. Don't share it.
  * Editing THIS CODE needs Deploy → Manage deployments → edit → Version: New version.
  *
  * Requests are POSTs with a JSON text body (text/plain, so browsers send them without a CORS
@@ -20,7 +20,7 @@
  *   Anyone:
  *     {"action":"list"}                      → {"ok":true,"items":[…],"used":n,"limit":n}
  *     {"action":"text","id":"…"}             → {"ok":true,"text":"…"} (full text of a text item)
- *     {"action":"login","password":"…"}      → {"ok":true,"token":"…","ttl":3600000}
+ *     {"action":"login","password":"…"}      → {"ok":true,"token":"…","ttl":43200000}
  *     {"action":"check","token":"…"}         → {"ok":true,"ttl":<ms left>}
  *     {"action":"ping"}                      → {"ok":true}
  *   With "token" (else "expired" | "changed" | "invalid"):
@@ -40,7 +40,7 @@
  * Delete is permanent (no Drive Trash), and only for files directly inside the folder.
  */
 
-var SESSION_MS = 60 * 60 * 1000; // 1 hour; the page says "1 hour" too
+var SESSION_MS = 12 * 60 * 60 * 1000; // 12 hours; the page says "12 hours" too
 var MAX_FAILS = 30; // wrong passwords allowed…
 var FAIL_WINDOW_S = 600; // …within 10 minutes; then every login waits
 var DEFAULT_LIMIT_MB = 1024;

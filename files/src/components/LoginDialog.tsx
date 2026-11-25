@@ -57,7 +57,7 @@ function LoginForm({ message }: { message?: string }) {
             {busy ? 'Checking…' : 'Unlock'}
           </button>
         </div>
-        <p className="muted tiny">You stay signed in on this browser for 1 hour.</p>
+        <p className="muted tiny">You stay signed in on this browser for 12 hours.</p>
       </form>
     </Modal>
   );

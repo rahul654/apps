@@ -8,7 +8,7 @@ import { bySizeAscending, bytesToBase64, chunkAt, chunkSizeFrom, CHUNK_UNIT, fit
 const NOW = 1_700_000_000_000;
 
 describe('session', () => {
-  it('builds from a login reply, capped at 1 hour', () => {
+  it('builds from a login reply, capped at 12 hours', () => {
     expect(sessionFrom('t', 1000, NOW)).toEqual({ v: 1, token: 't', exp: NOW + 1000 });
     expect(sessionFrom('t', SESSION_MS * 5, NOW)?.exp).toBe(NOW + SESSION_MS);
     for (const [token, ttl] of [['', 1000], ['t', 0], ['t', -5], ['t', NaN], [5, 1000], ['t', '1000']] as const) expect(sessionFrom(token, ttl, NOW)).toBeNull();
@@ -138,6 +138,9 @@ describe('format', () => {
     expect(formatMinutes(3_000_000)).toBe('50 min');
     expect(formatMinutes(1)).toBe('1 min');
     expect(formatMinutes(-5)).toBe('0 min');
+    expect(formatMinutes(3_600_000)).toBe('1 h');
+    expect(formatMinutes(4_320_000)).toBe('1 h 12 min');
+    expect(formatMinutes(43_200_000)).toBe('12 h');
     expect([5, 90, 120, 3720].map(formatDuration)).toEqual(['5 s', '1 min 30 s', '2 min', '1 h 2 min']);
   });
 });

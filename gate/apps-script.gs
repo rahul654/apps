@@ -9,7 +9,7 @@
  *
  * Requests are POSTs with a JSON text body (text/plain, so browsers send them without a CORS
  * preflight, which Apps Script can't answer):
- *   {"action":"login","password":"…"} → {"ok":true,"token":"…","ttl":3600000}
+ *   {"action":"login","password":"…"} → {"ok":true,"token":"…","ttl":43200000}
  *                                       {"ok":false,"error":"wrong"|"too-many"|"not-configured"}
  *   {"action":"check","token":"…"}    → {"ok":true,"ttl":<ms left>}
  *                                       {"ok":false,"error":"expired"|"changed"|"invalid"}
@@ -22,7 +22,7 @@
  * so changing PASSWORD ends every token. The password itself is never sent back.
  */
 
-var SESSION_MS = 60 * 60 * 1000; // 1 hour; the lock screen text says "1 hour" too
+var SESSION_MS = 12 * 60 * 60 * 1000; // 12 hours; the lock screen text says "12 hours" too
 var MAX_FAILS = 30; // wrong passwords allowed in a row…
 var FAIL_WINDOW_S = 600; // …within 10 minutes of each other; then every login waits
 

@@ -64,7 +64,7 @@ test('every error the script can send has a message', () => {
   assert.equal(new GateError('something-new').message, MESSAGES['bad-request']);
 });
 
-test('sessionFrom caps the length at one hour and refuses bad replies', () => {
+test('sessionFrom caps the length at 12 hours and refuses bad replies', () => {
   assert.equal(sessionFrom('t', SESSION_MS * 5, 0).exp, SESSION_MS);
   assert.equal(sessionFrom('t', 1000, 0).exp, 1000);
   for (const [token, ttl] of [['', 1000], [null, 1000], ['t', 0], ['t', -5], ['t', NaN], ['t', '1000']]) {

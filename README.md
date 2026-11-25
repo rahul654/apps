@@ -13,7 +13,7 @@ A single git repo holding several small web apps, published together on GitHub P
 | https://rahul654.github.io/apps/whiteboard/ | Excalidraw-based whiteboard and diagrams: boards library with previews, templates, Mermaid to diagram, PNG/SVG/.excalidraw export and backup, stored in IndexedDB | [whiteboard/](whiteboard/) |
 | https://rahul654.github.io/apps/apiclient/ | Postman-style API client: collections/environments in Postman v2.1 format, pre-request and test scripts (pm.* subset, chai), collection runner with data files, JSON compare, latency stats and reports, workspace zip export/import, optional dependency-free local proxy for CORS/cookies/timing | [apiclient/](apiclient/) |
 | https://rahul654.github.io/apps/drop/ | Phone ⇄ laptop file and text transfer over WebRTC: pair with two QR codes (compact codes, no signalling server), direct encrypted data channel, any file size, progress/cancel, previews | [drop/](drop/) |
-| https://rahul654.github.io/apps/files/ | Shared photos, videos, files and text notes stored in a Google Drive folder through a Google Apps Script: anyone with the link views (no login, not behind the site password); uploading, adding text and deleting need an upload password (1-hour login). Smallest-first chunked uploads, 1 GB cap, permanent delete | [files/](files/) |
+| https://rahul654.github.io/apps/files/ | Shared photos, videos, files and text notes stored in a Google Drive folder through a Google Apps Script: anyone with the link views (no login, not behind the site password); uploading, adding text and deleting need an upload password (12-hour login). Smallest-first chunked uploads, 1 GB cap, permanent delete | [files/](files/) |
 
 > GitHub Pages serves a repo named `apps` at `https://<user>.github.io/apps/`, so the repo name *is* the `/apps` part of the URL.
 > The bare root `https://rahul654.github.io/` is served by a different repo named `rahul654.github.io`. If you want a page there, create that repo separately.
@@ -22,7 +22,7 @@ A single git repo holding several small web apps, published together on GitHub P
 
 ## Password
 
-Every page asks for one shared password and stays unlocked for 1 hour in that browser. The password is checked by a small **Google Apps Script** that runs free on Google as your account. Change it there at any time; nothing in this repo changes and nothing is redeployed.
+Every page asks for one shared password and stays unlocked for 12 hours in that browser. The password is checked by a small **Google Apps Script** that runs free on Google as your account. Change it there at any time; nothing in this repo changes and nothing is redeployed.
 
 **This keeps casual visitors out; it isn't real access control.** GitHub Pages serves every file to anyone who asks for it directly.
 
@@ -46,11 +46,11 @@ Every page asks for one shared password and stays unlocked for 1 hour in that br
    curl -sL -H 'Content-Type: text/plain' -d '{"action":"login","password":"wrong"}' '<web app URL>'
    # {"ok":false,"error":"wrong"}
    curl -sL -H 'Content-Type: text/plain' -d '{"action":"login","password":"<your password>"}' '<web app URL>'
-   # {"ok":true,"token":"…","ttl":3600000}
+   # {"ok":true,"token":"…","ttl":43200000}
    curl -sL -H 'Content-Type: text/plain' -d '{"action":"check","token":"<token from above>"}' '<web app URL>'
    # {"ok":true,"ttl":…}
    ```
-3. **The site:** after the deploy, open https://rahul654.github.io/apps/ in a private window → lock screen → a wrong password says "That password isn't right" → the right one opens the page, and every app opens without asking again for an hour.
+3. **The site:** after the deploy, open https://rahul654.github.io/apps/ in a private window → lock screen → a wrong password says "That password isn't right" → the right one opens the page, and every app opens without asking again for 12 hours.
 4. **Logging out everyone:** change `PASSWORD` in Script properties. Open tabs lock on their next page load with "The password was changed".
 
 ### Change the password
@@ -70,7 +70,7 @@ Details: [docs/changelog/2026-11-22-password-gate.md](docs/changelog/2026-11-22-
 
 ## Files
 
-https://rahul654.github.io/apps/files/ shows everything in one Google Drive folder to **anyone with the link**. No login, and it's **not behind the site password** (`PUBLIC_APPS` in [gate/inject.mjs](gate/inject.mjs)). Uploading files, adding text and deleting need the **upload password**, and a login lasts 1 hour.
+https://rahul654.github.io/apps/files/ shows everything in one Google Drive folder to **anyone with the link**. No login, and it's **not behind the site password** (`PUBLIC_APPS` in [gate/inject.mjs](gate/inject.mjs)). Uploading files, adding text and deleting need the **upload password**, and a login lasts 12 hours.
 
 It needs its own Apps Script, separate from the gate's: [files/apps-script/Code.gs](files/apps-script/Code.gs). It runs as you, so it can write to your Drive while the people using the page never sign in to Google. The page sends it the files in pieces of up to 8 MB. The script passes them on to Google Drive and keeps your upload password. The page never sees the password or the Drive upload links.
 
@@ -94,7 +94,7 @@ It needs its own Apps Script, separate from the gate's: [files/apps-script/Code.
    curl -sL -H 'Content-Type: text/plain' -d '{"action":"list"}' '<web app URL>'
    # {"ok":true,"items":[],"used":0,"limit":1073741824}
    curl -sL -H 'Content-Type: text/plain' -d '{"action":"login","password":"<upload password>"}' '<web app URL>'
-   # {"ok":true,"token":"…","ttl":3600000}
+   # {"ok":true,"token":"…","ttl":43200000}
    ```
 3. On the site: **⬆ Upload** → the password → attach a few files with 📎 (they go smallest first) and send a text. Open the page in a private window: everything is there without any login.
 
@@ -104,7 +104,7 @@ It needs its own Apps Script, separate from the gate's: [files/apps-script/Code.
 - **Uploading:** 📎 (several files at once), paste images into the text box, or drag files onto the page on a computer. Up to 10 files upload at the same time, smallest first; when one finishes, the next starts. **Keep the page open until it finishes.** It keeps the screen on, and a locked phone pauses the upload, which continues when you come back. A dropped connection retries by itself and continues from the last piece.
 - **Text:** type or paste in the box at the bottom and press **Send** (Ctrl+Enter). It's saved as a `.txt` named after its first line.
 - **Deleting:** tick items (or **Select all**) → **Delete**, or **Delete** inside an item. **It's permanent: it skips the Drive Trash.** The script only deletes files inside its own folder.
-- **1-hour login:** checked every 15 s locally and every 2 minutes with the script, without reloading. When it ends, the upload and delete buttons disappear, a running upload pauses, and the password box appears. After logging in, the upload continues from the last piece Drive has, and the text you'd typed is still there.
+- **12-hour login:** checked every 15 s locally and every 2 minutes with the script, without reloading. When it ends, the upload and delete buttons disappear, a running upload pauses, and the password box appears. After logging in, the upload continues from the last piece Drive has, and the text you'd typed is still there.
 
 ### Change the password, the limit or the folder
 

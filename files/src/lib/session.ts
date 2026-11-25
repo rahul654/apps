@@ -1,9 +1,9 @@
 // The upload login, kept in localStorage as {v, token, exp}. The token comes from the Apps Script
 // and is checked by it on every upload/delete; exp is this device's clock + the ttl the script
-// returned (at most 1 hour), so a wrong clock can't make a login last longer.
+// returned (at most 12 hours), so a wrong clock can't make a login last longer.
 
 export const SESSION_KEY = 'files:session:v1';
-export const SESSION_MS = 60 * 60 * 1000;
+export const SESSION_MS = 12 * 60 * 60 * 1000;
 
 export type Session = { v: 1; token: string; exp: number };
 

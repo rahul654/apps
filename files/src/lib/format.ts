@@ -35,9 +35,12 @@ export function formatDateTime(iso: string): string {
   return Number.isFinite(t) ? new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
 }
 
-/** 3_000_000 → "50 min", 30_000 → "1 min" (rounded up), 0 → "0 min". */
+/** 3_000_000 → "50 min", 30_000 → "1 min" (rounded up), 0 → "0 min", 43_200_000 → "12 h", 4_320_000 → "1 h 12 min". */
 export function formatMinutes(ms: number): string {
-  return `${Math.max(0, Math.ceil(ms / 60_000))} min`;
+  const min = Math.max(0, Math.ceil(ms / 60_000));
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return min % 60 ? `${h} h ${min % 60} min` : `${h} h`;
 }
 
 /** Upload speed/ETA: 90 → "1 min 30 s". */

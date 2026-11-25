@@ -167,7 +167,7 @@ const overlay = (() => {
         <input id="gate-password" name="password" type="password" autocomplete="current-password" required />
         <button type="submit">Unlock</button>
         <div class="error" role="alert" aria-live="assertive"></div>
-        <p class="note">You’ll stay unlocked on this browser for 1 hour.</p>
+        <p class="note">You’ll stay unlocked on this browser for 12 hours.</p>
       </form>
     </div>`;
 

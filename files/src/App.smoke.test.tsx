@@ -121,7 +121,7 @@ describe('Files page', () => {
     await act(async () => auth.login('pw'));
     await waitFor(() => Boolean(document.querySelector('.composer')));
     expect(document.querySelectorAll('.card-check')).toHaveLength(2);
-    expect(text()).toMatch(/Signed in · 60 min left/);
+    expect(text()).toMatch(/Signed in · 12 h left/);
 
     // Send a text.
     const area = document.querySelector<HTMLTextAreaElement>('.composer textarea')!;
