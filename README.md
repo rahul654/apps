@@ -14,6 +14,7 @@ A single git repo holding several small web apps, published together on GitHub P
 | https://rahul654.github.io/apps/apiclient/ | Postman-style API client: collections/environments in Postman v2.1 format, pre-request and test scripts (pm.* subset, chai), collection runner with data files, JSON compare, latency stats and reports, workspace zip export/import, optional dependency-free local proxy for CORS/cookies/timing | [apiclient/](apiclient/) |
 | https://rahul654.github.io/apps/drop/ | Phone ⇄ laptop file and text transfer over WebRTC: pair with two QR codes (compact codes, no signalling server), direct encrypted data channel, any file size, progress/cancel, previews | [drop/](drop/) |
 | https://rahul654.github.io/apps/files/ | Shared photos, videos, files and text notes stored in a Google Drive folder through a Google Apps Script: anyone with the link views (no login, not behind the site password); uploading, adding text and deleting need an upload password (12-hour login). Smallest-first chunked uploads, 1 GB cap, permanent delete | [files/](files/) |
+| https://rahul654.github.io/apps/music/ | Music Hooks: plays the most-replayed ("viral") parts of songs from YouTube playlists, grouped into categories, through the YouTube player; peaks come from YouTube's "Most replayed" data and are kept in a JSON file in the repo; any song can be switched to play in full. Not behind the site password | [music/](music/) |
 
 > GitHub Pages serves a repo named `apps` at `https://<user>.github.io/apps/`, so the repo name *is* the `/apps` part of the URL.
 > The bare root `https://rahul654.github.io/` is served by a different repo named `rahul654.github.io`. If you want a page there, create that repo separately.
@@ -22,7 +23,7 @@ A single git repo holding several small web apps, published together on GitHub P
 
 ## Password
 
-Every page asks for one shared password and stays unlocked for 12 hours in that browser. The password is checked by a small **Google Apps Script** that runs free on Google as your account. Change it there at any time; nothing in this repo changes and nothing is redeployed.
+Every page except **Files** and **Music** asks for one shared password and stays unlocked for 12 hours in that browser. The password is checked by a small **Google Apps Script** that runs free on Google as your account. Change it there at any time; nothing in this repo changes and nothing is redeployed.
 
 **This keeps casual visitors out; it isn't real access control.** GitHub Pages serves every file to anyone who asks for it directly.
 
@@ -122,6 +123,17 @@ It needs its own Apps Script, separate from the gate's: [files/apps-script/Code.
 - **Trying it locally:** `cd files && FILES_PASSWORD=test-pass npm run mock` (a stand-in for the script on port 4336, with an in-memory Drive), then `VITE_FILES_URL=http://localhost:4336/exec VITE_FILES_MEDIA=http://localhost:4336 npm run dev`.
 
 Details: [docs/changelog/2026-11-22-files-app.md](docs/changelog/2026-11-22-files-app.md).
+
+---
+
+## Music
+
+https://rahul654.github.io/apps/music/ plays the most-replayed part of each song (its "hook") from YouTube playlists, one category per playlist. It's **not behind the site password** (`PUBLIC_APPS` in [gate/inject.mjs](gate/inject.mjs)): it only shows public YouTube videos.
+
+- **Modes:** *Hooks* plays each song's top clip, *All peaks* plays every peak of a song (up to 3), *Full song* plays songs whole. The **Full song** switch on a song overrides the mode for that song only, and flipping it while the clip plays carries on from the same second. Your choices stay in this browser.
+- **Where the clips come from:** YouTube's "Most replayed" graph, read with `yt-dlp`. The song list, clips and graphs live in [music/src/data/catalog.json](music/src/data/catalog.json); the playlists and categories in [music/scripts/playlists.json](music/scripts/playlists.json).
+- **Refreshing or adding songs** (needs `yt-dlp` on your machine; not run by the build): `cd music && npm run extract` (`--per-category 10`, `--only <categoryId>`, `--dry-run`). Hand-fixed names and clips marked `"edited": true` are kept. Commit `catalog.json` afterwards.
+- **Limits:** the first play needs a tap (browsers block autoplay); on a phone, YouTube stops when the screen locks or the tab is in the background; the video stays visible, as YouTube's terms require. A video whose owner blocks embedding is skipped.
 
 ---
 

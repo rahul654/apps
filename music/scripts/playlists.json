@@ -1,0 +1,8 @@
+{
+  "perCategory": 5,
+  "categories": [
+    { "id": "new-hindi", "title": "New Hindi Hits", "playlistId": "PLEDK6IO6dKxJVISuBDmu42_H6F9mKpXkx" },
+    { "id": "english-pop", "title": "English Pop", "playlistId": "PLEDK6IO6dKxIEnwz-LP4t4Cv0htnAdbm9" },
+    { "id": "retro-classics", "title": "Retro Classics", "playlistId": "PLEDK6IO6dKxJHsUptJMDQGIvV7pCMJF-c" }
+  ]
+}

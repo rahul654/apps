@@ -4,8 +4,9 @@
  * Apps the gate leaves open: anyone can view them without the site password.
  * - files: public by design (viewing needs nothing; uploads/deletes have their own password,
  *   checked by its own Apps Script; see "Files" in README.md).
+ * - music: only plays public YouTube videos; nothing private to protect (see "Music" in README.md).
  */
-export const PUBLIC_APPS = ['files'];
+export const PUBLIC_APPS = ['files', 'music'];
 
 /** Files copied to _site/gate/. Everything else in gate/ (this file, tests) stays out of the site. */
 export const GATE_FILES = ['auth-gate.js', 'core.js', 'config.js'];
